@@ -1,0 +1,5 @@
+node_modules/
+.cache/
+inputs/food-seed/
+generated/
+*.log

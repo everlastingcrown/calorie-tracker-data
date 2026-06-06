@@ -1,0 +1,49 @@
+name: Build food seed
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-food-seed:
+    name: Build and publish food seed
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download source inputs
+        run: npm run download:inputs
+
+      - name: Build food seed artifacts
+        run: npm run build:food-seed
+
+      - name: Resolve release tag
+        id: release_tag
+        run: echo "tag=$(npm run --silent release:tag)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        run: |
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            --title "$RELEASE_TAG" \
+            --notes "Food seed artifacts built from inputs/manifest.json." \
+            generated/food-seed/foods.seed.json \
+            generated/food-seed/foods.manifest.json \
+            generated/food-seed/foods.qa.json
