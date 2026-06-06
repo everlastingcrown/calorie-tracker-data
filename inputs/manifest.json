@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "releaseTag": "food-seed-2026-04-30-usda-2023-ausnut-afcd-r3",
+  "sources": [
+    {
+      "id": "usda-foundation-2026-04-30",
+      "provider": "usda",
+      "title": "USDA FoodData Central Foundation Foods CSV",
+      "version": "2026-04-30",
+      "enabled": true,
+      "outputDir": "usda",
+      "files": [
+        {
+          "id": "foundation-csv-zip",
+          "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_csv_2026-04-30.zip",
+          "sha256": "d6d4f41dcd19a46abcdd67775379cb6f0292ff08daa7e0680fdd0982830bf57b",
+          "fileName": "FoodData_Central_foundation_food_csv_2026-04-30.zip",
+          "extract": "zip"
+        }
+      ]
+    },
+    {
+      "id": "ausnut-2023",
+      "provider": "ausnut",
+      "title": "AUSNUT 2023",
+      "version": "2023",
+      "enabled": true,
+      "outputDir": "ausnut-2023",
+      "files": [
+        {
+          "id": "food-details",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2026-03/AUSNUT-2023-Food-details-4.xlsx",
+          "sha256": "e7496d8fe2941ce80740f1731d7cb6e39836bc82d1a18d4007bc027780970293",
+          "fileName": "food details.xlsx"
+        },
+        {
+          "id": "food-nutrient-profiles",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-09/AUSNUT%202023%20-%20Food%20nutrient%20profiles.xlsx?v=20250903",
+          "sha256": "374650afc59951009d5ddf48fe35f712467458eb07eef513ea9f54c8f110f317",
+          "fileName": "food nutrient profiles.xlsx"
+        },
+        {
+          "id": "food-measures",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-08/AUSNUT%202023%20-%20Food%20measures.xlsx?v=20250829",
+          "sha256": "58bee1204610efb72bb831dc7fb65acc23db540b51d056f83c6ac0ce84590475",
+          "fileName": "food measures.xlsx"
+        }
+      ]
+    },
+    {
+      "id": "afcd-release-3",
+      "provider": "afcd",
+      "title": "Australian Food Composition Database Release 3",
+      "version": "release-3",
+      "enabled": true,
+      "outputDir": "afcd-release-3",
+      "files": [
+        {
+          "id": "food-details",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-12/AFCD%20Release%203%20-%20Food%20Details.xlsx",
+          "sha256": "69aa096c45cb0699db60a9c544442312e9ff09af587b99c42dc78bc26f689629",
+          "fileName": "food details.xlsx"
+        },
+        {
+          "id": "nutrient-profiles",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-12/AFCD%20Release%203%20-%20Nutrient%20profiles.xlsx",
+          "sha256": "14cb3e73dbf58987b440e6299624c0fefd7a4e61591fc1f753995d9534e0efc9",
+          "fileName": "nutrient profiles.xlsx"
+        }
+      ]
+    },
+    {
+      "id": "openfoodfacts-jsonl",
+      "provider": "openfoodfacts",
+      "title": "Open Food Facts JSONL export",
+      "version": "main",
+      "enabled": false,
+      "outputDir": "openfoodfacts",
+      "notes": "Disabled for this generic food seed workflow. The published export is 7.68 GB and needs a dedicated branded-food shard pipeline before enabling in GitHub Actions.",
+      "files": [
+        {
+          "id": "products-jsonl-gz",
+          "url": "https://huggingface.co/datasets/openfoodfacts/openfoodfacts-jsonl-export/resolve/main/openfoodfacts-products.jsonl.gz",
+          "sha256": "f9d8a7eafec73d0b97be6fa44e988efce77b9510a462061f1f344691bec5e6e8",
+          "fileName": "openfoodfacts-products.jsonl.gz"
+        }
+      ]
+    }
+  ]
+}

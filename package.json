@@ -1,0 +1,20 @@
+{
+  "name": "calorie-tracker-data",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "download:inputs": "node --experimental-strip-types scripts/download-inputs.ts",
+    "build:food-seed": "node --experimental-strip-types scripts/build-food-seed.ts --usda-dir ./inputs/food-seed/usda --ausnut-dir ./inputs/food-seed/ausnut-2023 --afcd-dir ./inputs/food-seed/afcd-release-3 --output-dir ./generated/food-seed",
+    "release:tag": "node --experimental-strip-types scripts/create-release-tag.ts",
+    "test": "node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "typescript": "~5.9.2"
+  }
+}
