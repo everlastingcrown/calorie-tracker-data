@@ -82,12 +82,68 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
-test('parseBuildArgs supports optional Open Food Facts directory', () => {
+test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '2345678901234',
+      product_name: 'Plain Crackers',
+      serving_size: '25 g',
+      nutriments: {
+        'energy-kj_100g': 2000,
+        proteins: '8',
+        carbs_100g: '70',
+        fat: '12',
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.caloriesPer100g, 478.01);
+  assert.equal(record.proteinPer100g, 8);
+  assert.equal(record.carbsPer100g, 70);
+  assert.equal(record.fatPer100g, 12);
+  assert.equal(record.servingSizeG, 25);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
+  const food = testExports.buildSeedFood(
+    testExports.createStagingRecord({
+      provider: 'openfoodfacts',
+      providerId: '1234567890123',
+      name: 'Peanut Butter',
+      brandName: 'Example Brand',
+      region: 'global',
+      caloriesPer100g: 588,
+      proteinPer100g: 25,
+      carbsPer100g: 20,
+      fatPer100g: 50,
+      servingSizeG: null,
+      servingQuantity: null,
+      servingUnit: null,
+      servingDescription: null,
+      servingWeightsG: {},
+      barcode: '1234567890123',
+      sourceUpdatedAt: null,
+      warnings: [],
+    }),
+    '2026-06-07T00:00:00.000Z'
+  );
+
+  assert.equal(food.id, 'off-1234567890123');
+  assert.equal(food.source, 'openfoodfacts');
+});
+
+test('parseBuildArgs requires Open Food Facts directory instead of AUSNUT', () => {
   const args = testExports.parseBuildArgs([
     '--usda-dir',
     '/tmp/usda',
-    '--ausnut-dir',
-    '/tmp/ausnut',
     '--afcd-dir',
     '/tmp/afcd',
     '--openfoodfacts-dir',
@@ -97,4 +153,19 @@ test('parseBuildArgs supports optional Open Food Facts directory', () => {
   ]);
 
   assert.equal(args.openFoodFactsDir, '/tmp/off');
+});
+
+test('parseBuildArgs rejects missing Open Food Facts directory', () => {
+  assert.throws(
+    () =>
+      testExports.parseBuildArgs([
+        '--usda-dir',
+        '/tmp/usda',
+        '--afcd-dir',
+        '/tmp/afcd',
+        '--output-dir',
+        '/tmp/out',
+      ]),
+    /--openfoodfacts-dir/
+  );
 });

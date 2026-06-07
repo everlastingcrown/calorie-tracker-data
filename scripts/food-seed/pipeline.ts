@@ -5,13 +5,12 @@ import path from 'node:path';
 import { createGunzip } from 'node:zlib';
 import * as XLSXModule from 'xlsx';
 
-type Provider = 'usda_foundation' | 'usda_sr_legacy' | 'ausnut' | 'afcd' | 'openfoodfacts';
+type Provider = 'usda_foundation' | 'usda_sr_legacy' | 'afcd' | 'openfoodfacts';
 
 export interface FoodSeedBuildArgs {
   usdaDir: string;
-  ausnutDir: string;
   afcdDir?: string;
-  openFoodFactsDir?: string;
+  openFoodFactsDir: string;
   outputDir: string;
 }
 
@@ -28,7 +27,7 @@ export interface SeedFood {
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
   barcode: string | null;
-  source: 'usda' | 'ausnut' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
+  source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
   createdAt: string;
 }
 
@@ -55,7 +54,7 @@ export interface SeedStagingRecord {
 
 interface ParsedSource {
   sourceId: string;
-  provider: 'usda' | 'ausnut' | 'afcd' | 'openfoodfacts';
+  provider: 'usda' | 'afcd' | 'openfoodfacts';
   releaseDate: string | null;
   license: string;
   inputFiles: string[];
@@ -127,7 +126,7 @@ const USDA_NUTRIENTS = {
   fat: 1004,
 } as const;
 
-const AUSNUT_HEADER_MATCHERS = {
+const FSANZ_HEADER_MATCHERS = {
   foodId: [
     /^survey[_\s-]*id$/i,
     /^food[_\s-]*id$/i,
@@ -403,9 +402,10 @@ function seedSourceForProvider(provider: Provider): SeedFood['source'] {
 
 function buildSeedFood(record: SeedStagingRecord, generatedAt: string): SeedFood {
   const source = seedSourceForProvider(record.provider);
+  const idPrefix = record.provider === 'openfoodfacts' ? 'off' : source;
 
   return {
-    id: `${source}-${record.providerId}`,
+    id: `${idPrefix}-${record.providerId}`,
     name: record.name,
     caloriesPer100g: record.caloriesPer100g ?? 0,
     proteinPer100g: record.proteinPer100g ?? 0,
@@ -857,120 +857,6 @@ function readWorkbookRows(workbookPath: string): Record<string, unknown>[] {
   });
 }
 
-async function parseAusnutDirectory(ausnutDir: string): Promise<ParsedSource[]> {
-  const files = await listWorkbookFiles(ausnutDir);
-  const detailsPath = findWorkbook(files, [/food details/i], 'AUSNUT food details');
-  const nutrientsPath = findWorkbook(
-    files,
-    [/food nutrient profiles/i, /food nutrients/i],
-    'AUSNUT food nutrient profiles'
-  );
-  const measuresPath = findWorkbook(files, [/food measures/i], 'AUSNUT food measures');
-
-  const detailsRows = readWorkbookRows(detailsPath);
-  const nutrientRows = readWorkbookRows(nutrientsPath);
-  const measureRows = readWorkbookRows(measuresPath);
-
-  const nutrientsByFood = new Map<
-    string,
-    { calories: number | null; protein: number | null; carbs: number | null; fat: number | null }
-  >();
-  for (const row of nutrientRows) {
-    const providerId = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodId) ?? '').trim();
-    if (!providerId) continue;
-    const caloriesKj = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.energyKj));
-    const protein = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.protein));
-    const carbs = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.carbs));
-    const fat = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.fat));
-
-    nutrientsByFood.set(providerId, {
-      calories: caloriesKj != null ? roundNumber(caloriesKj * 0.239005736) : null,
-      protein,
-      carbs,
-      fat,
-    });
-  }
-
-  const servingsByFood = new Map<string, ServingMeasure[]>();
-  for (const row of measureRows) {
-    const providerId = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodId) ?? '').trim();
-    const grams = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.gramWeight));
-    if (!providerId || grams == null || grams <= 0) continue;
-    const description =
-      String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.measureDescription) ?? '').trim() || null;
-    const parsedMeasure = parseQuantityAndUnit(description);
-    const serving = createServingMeasure({
-      grams,
-      quantity: parsedMeasure?.quantity ?? null,
-      unit: parsedMeasure?.unit ?? null,
-      description,
-    });
-    if (!serving) continue;
-    const list = servingsByFood.get(providerId) ?? [];
-    list.push(serving);
-    servingsByFood.set(providerId, list);
-  }
-
-  const parsed: ParsedSource = {
-    sourceId: 'ausnut-2023',
-    provider: 'ausnut',
-    releaseDate: null,
-    license: 'FSANZ AUSNUT 2023 site terms; redistribution confirmation required separately',
-    inputFiles: [detailsPath, nutrientsPath, measuresPath],
-    stagingRecords: [],
-    rejectedRows: [],
-  };
-
-  for (const row of detailsRows) {
-    const providerId = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodId) ?? '').trim();
-    const rawName = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodName) ?? '').trim();
-    if (!providerId || !rawName) continue;
-
-    const nutrients = nutrientsByFood.get(providerId) ?? {
-      calories: null,
-      protein: null,
-      carbs: null,
-      fat: null,
-    };
-    const serving = chooseBestServing(servingsByFood.get(providerId) ?? []);
-
-    const record = createStagingRecord({
-      provider: 'ausnut',
-      providerId,
-      name: normalizeDisplayName(rawName),
-      brandName: null,
-      region: 'au',
-      caloriesPer100g: nutrients.calories,
-      proteinPer100g: nutrients.protein,
-      carbsPer100g: nutrients.carbs,
-      fatPer100g: nutrients.fat,
-      servingSizeG: serving?.grams ?? null,
-      servingQuantity: serving?.quantity ?? null,
-      servingUnit: serving?.unit ?? null,
-      servingDescription: serving?.description ?? null,
-      servingWeightsG: serving?.weightsG ?? {},
-      barcode: null,
-      sourceUpdatedAt: null,
-      warnings: [],
-    });
-
-    const rejectionReason = shouldRejectRecord(record);
-    if (rejectionReason) {
-      parsed.rejectedRows.push({
-        provider: 'ausnut',
-        providerId,
-        reason: rejectionReason,
-        name: record.name,
-      });
-      continue;
-    }
-
-    parsed.stagingRecords.push(record);
-  }
-
-  return [parsed];
-}
-
 async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
   const files = await listWorkbookFiles(afcdDir);
   const detailsPath = findWorkbook(files, [/food details/i], 'AFCD food details');
@@ -988,12 +874,12 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
     { calories: number | null; protein: number | null; carbs: number | null; fat: number | null }
   >();
   for (const row of nutrientRows) {
-    const providerId = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodId) ?? '').trim();
+    const providerId = String(valueForHeader(row, FSANZ_HEADER_MATCHERS.foodId) ?? '').trim();
     if (!providerId) continue;
-    const caloriesKj = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.energyKj));
-    const protein = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.protein));
-    const carbs = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.carbs));
-    const fat = parseNumber(valueForHeader(row, AUSNUT_HEADER_MATCHERS.fat));
+    const caloriesKj = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.energyKj));
+    const protein = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.protein));
+    const carbs = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.carbs));
+    const fat = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.fat));
 
     nutrientsByFood.set(providerId, {
       calories: caloriesKj != null ? roundNumber(caloriesKj * 0.239005736) : null,
@@ -1014,8 +900,8 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
   };
 
   for (const row of detailsRows) {
-    const providerId = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodId) ?? '').trim();
-    const rawName = String(valueForHeader(row, AUSNUT_HEADER_MATCHERS.foodName) ?? '').trim();
+    const providerId = String(valueForHeader(row, FSANZ_HEADER_MATCHERS.foodId) ?? '').trim();
+    const rawName = String(valueForHeader(row, FSANZ_HEADER_MATCHERS.foodName) ?? '').trim();
     if (!providerId || !rawName) continue;
 
     const nutrients = nutrientsByFood.get(providerId) ?? {
@@ -1103,6 +989,14 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
+function firstNumberValue(...values: unknown[]): number | null {
+  for (const value of values) {
+    const parsed = numberValue(value);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -1113,7 +1007,10 @@ function parseOpenFoodFactsServing(product: Record<string, unknown>): ServingMea
   const servingSize = stringValue(product.serving_size);
   const servingQuantity = numberValue(product.serving_quantity);
   const parsedMeasure = parseQuantityAndUnit(servingSize);
-  const gramsFromText = servingSize?.match(/\((\d+(?:\.\d+)?)\s*g\)/i)?.[1] ?? null;
+  const gramsFromText =
+    servingSize?.match(/\((\d+(?:\.\d+)?)\s*g\)/i)?.[1] ??
+    servingSize?.match(/\b(\d+(?:\.\d+)?)\s*g\b/i)?.[1] ??
+    null;
   const grams = parseNumber(gramsFromText) ?? servingQuantity;
 
   return createServingMeasure({
@@ -1162,6 +1059,12 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
       if (!providerId || !rawName) continue;
 
       const nutriments = objectValue(product.nutriments);
+      const calories =
+        firstNumberValue(nutriments['energy-kcal_100g'], nutriments['energy-kcal']) ??
+        (() => {
+          const energyKj = firstNumberValue(nutriments['energy-kj_100g'], nutriments.energy_100g);
+          return energyKj != null ? roundNumber(energyKj * 0.239005736) : null;
+        })();
       const serving = parseOpenFoodFactsServing(product);
       const record = createStagingRecord({
         provider: 'openfoodfacts',
@@ -1169,10 +1072,15 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
         name: normalizeDisplayName(rawName),
         brandName: stringValue(product.brands),
         region: 'global',
-        caloriesPer100g: numberValue(nutriments['energy-kcal_100g']),
-        proteinPer100g: numberValue(nutriments.proteins_100g),
-        carbsPer100g: numberValue(nutriments.carbohydrates_100g),
-        fatPer100g: numberValue(nutriments.fat_100g),
+        caloriesPer100g: calories,
+        proteinPer100g: firstNumberValue(nutriments.proteins_100g, nutriments.proteins),
+        carbsPer100g: firstNumberValue(
+          nutriments.carbohydrates_100g,
+          nutriments.carbs_100g,
+          nutriments.carbohydrates,
+          nutriments.carbs
+        ),
+        fatPer100g: firstNumberValue(nutriments.fat_100g, nutriments.fat),
         servingSizeG: serving?.grams ?? null,
         servingQuantity: serving?.quantity ?? null,
         servingUnit: serving?.unit ?? null,
@@ -1247,11 +1155,6 @@ export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
       index += 1;
       continue;
     }
-    if (arg === '--ausnut-dir' && next) {
-      options.ausnutDir = next;
-      index += 1;
-      continue;
-    }
     if (arg === '--afcd-dir' && next) {
       options.afcdDir = next;
       index += 1;
@@ -1269,9 +1172,9 @@ export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
     }
   }
 
-  if (!options.usdaDir || !options.ausnutDir || !options.outputDir) {
+  if (!options.usdaDir || !options.openFoodFactsDir || !options.outputDir) {
     throw new Error(
-      'Usage: npm run build:food-seed -- --usda-dir <path> --ausnut-dir <path> [--afcd-dir <path>] [--openfoodfacts-dir <path>] [--output-dir <path>]'
+      'Usage: npm run build:food-seed -- --usda-dir <path> --openfoodfacts-dir <path> [--afcd-dir <path>] [--output-dir <path>]'
     );
   }
 
@@ -1282,9 +1185,8 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   const generatedAt = new Date().toISOString();
   const sources = [
     ...(await parseUsdaDirectory(args.usdaDir)),
-    ...(await parseAusnutDirectory(args.ausnutDir)),
     ...(args.afcdDir ? await parseAfcdDirectory(args.afcdDir) : []),
-    ...(args.openFoodFactsDir ? await parseOpenFoodFactsDirectory(args.openFoodFactsDir) : []),
+    ...(await parseOpenFoodFactsDirectory(args.openFoodFactsDir)),
   ];
   const stagingRecords = sources.flatMap((source) => source.stagingRecords);
   const rejectedRows = sources.flatMap((source) => source.rejectedRows);

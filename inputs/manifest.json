@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releaseTag": "food-seed-2026-04-30-usda-2023-ausnut-afcd-r3",
+  "releaseTag": "food-seed-2026-04-30-usda-afcd-r3-openfoodfacts-main",
   "sources": [
     {
       "id": "usda-foundation-2026-04-30",
@@ -16,34 +16,6 @@
           "sha256": "d6d4f41dcd19a46abcdd67775379cb6f0292ff08daa7e0680fdd0982830bf57b",
           "fileName": "FoodData_Central_foundation_food_csv_2026-04-30.zip",
           "extract": "zip"
-        }
-      ]
-    },
-    {
-      "id": "ausnut-2023",
-      "provider": "ausnut",
-      "title": "AUSNUT 2023",
-      "version": "2023",
-      "enabled": true,
-      "outputDir": "ausnut-2023",
-      "files": [
-        {
-          "id": "food-details",
-          "url": "https://www.foodstandards.gov.au/sites/default/files/2026-03/AUSNUT-2023-Food-details-4.xlsx",
-          "sha256": "e7496d8fe2941ce80740f1731d7cb6e39836bc82d1a18d4007bc027780970293",
-          "fileName": "food details.xlsx"
-        },
-        {
-          "id": "food-nutrient-profiles",
-          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-09/AUSNUT%202023%20-%20Food%20nutrient%20profiles.xlsx?v=20250903",
-          "sha256": "374650afc59951009d5ddf48fe35f712467458eb07eef513ea9f54c8f110f317",
-          "fileName": "food nutrient profiles.xlsx"
-        },
-        {
-          "id": "food-measures",
-          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-08/AUSNUT%202023%20-%20Food%20measures.xlsx?v=20250829",
-          "sha256": "58bee1204610efb72bb831dc7fb65acc23db540b51d056f83c6ac0ce84590475",
-          "fileName": "food measures.xlsx"
         }
       ]
     },
@@ -74,9 +46,8 @@
       "provider": "openfoodfacts",
       "title": "Open Food Facts JSONL export",
       "version": "main",
-      "enabled": false,
+      "enabled": true,
       "outputDir": "openfoodfacts",
-      "notes": "Disabled for this generic food seed workflow. The published export is 7.68 GB and needs a dedicated branded-food shard pipeline before enabling in GitHub Actions.",
       "files": [
         {
           "id": "products-jsonl-gz",

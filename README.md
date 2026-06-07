@@ -29,10 +29,8 @@ npm run type-check
 Enabled sources:
 
 - USDA FoodData Central Foundation Foods CSV
-- AUSNUT 2023 workbooks
 - Australian Food Composition Database Release 3 workbooks
-
-Open Food Facts is present in the manifest but disabled. The current published JSONL export is too large for this generic food seed workflow and should be enabled only after the branded-food shard pipeline exists.
+- Open Food Facts JSONL export
 
 ## Outputs
 

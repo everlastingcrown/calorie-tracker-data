@@ -10,7 +10,7 @@ export interface FoodSeedManifestFile {
 
 export interface FoodSeedManifestSource {
   id: string;
-  provider: 'usda' | 'ausnut' | 'afcd' | 'openfoodfacts';
+  provider: 'usda' | 'afcd' | 'openfoodfacts';
   title: string;
   version: string;
   enabled: boolean;

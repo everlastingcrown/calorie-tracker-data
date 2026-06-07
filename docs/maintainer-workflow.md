@@ -22,4 +22,4 @@ The workflow uses `manifest.releaseTag` as the GitHub Release tag. Change it whe
 
 ## CI Limits
 
-The GitHub Actions free runner has limited disk and memory. Keep the enabled manifest sources below the 14 GB storage limit and avoid enabling Open Food Facts until the branded-food pipeline filters or shards the export before artifact publication.
+The GitHub Actions free runner has limited disk and memory. Keep enabled manifest sources below the 14 GB storage limit, and inspect `foods.qa.json` after source changes for rejected-row or duplicate spikes.
