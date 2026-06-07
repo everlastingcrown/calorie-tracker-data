@@ -1,0 +1,100 @@
+import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { testExports } from '../pipeline.ts';
+
+test('parseUsdaDirectory extracts household serving weights from portions', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-usda-'));
+
+  await writeFile(
+    path.join(dir, 'food.csv'),
+    [
+      'fdc_id,data_type,description,publication_date',
+      '1000,Foundation,"Tomatoes, raw",2026-04-30',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(dir, 'food_nutrient.csv'),
+    [
+      'fdc_id,nutrient_id,amount',
+      '1000,1008,18',
+      '1000,1003,0.9',
+      '1000,1005,3.9',
+      '1000,1004,0.2',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(dir, 'measure_unit.csv'),
+    ['id,name', '1,cup', '2,tbsp'].join('\n')
+  );
+  await writeFile(
+    path.join(dir, 'food_portion.csv'),
+    [
+      'fdc_id,amount,measure_unit_id,portion_description,modifier,gram_weight',
+      '1000,1,1,"chopped",,240',
+      '1000,2,2,"minced",,30',
+    ].join('\n')
+  );
+
+  const [foundation] = await testExports.parseUsdaDirectory(dir);
+  const record = foundation.stagingRecords[0];
+
+  assert.equal(record.servingSizeG, 30);
+  assert.equal(record.servingQuantity, 2);
+  assert.equal(record.servingUnit, 'tbsp');
+  assert.deepEqual(record.servingWeightsG, { cup: 240, tbsp: 15 });
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseOpenFoodFactsDirectory extracts serving weight from serving text', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '1234567890123',
+      product_name: 'Peanut Butter',
+      brands: 'Example Brand',
+      serving_quantity: '30',
+      serving_size: '2 tbsp (30 g)',
+      nutriments: {
+        'energy-kcal_100g': 588,
+        proteins_100g: 25,
+        carbohydrates_100g: 20,
+        fat_100g: 50,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.provider, 'openfoodfacts');
+  assert.equal(record.servingSizeG, 30);
+  assert.equal(record.servingQuantity, 2);
+  assert.equal(record.servingUnit, 'tbsp');
+  assert.equal(record.servingDescription, '2 tbsp (30 g)');
+  assert.deepEqual(record.servingWeightsG, { tbsp: 15 });
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseBuildArgs supports optional Open Food Facts directory', () => {
+  const args = testExports.parseBuildArgs([
+    '--usda-dir',
+    '/tmp/usda',
+    '--ausnut-dir',
+    '/tmp/ausnut',
+    '--afcd-dir',
+    '/tmp/afcd',
+    '--openfoodfacts-dir',
+    '/tmp/off',
+    '--output-dir',
+    '/tmp/out',
+  ]);
+
+  assert.equal(args.openFoodFactsDir, '/tmp/off');
+});
