@@ -20,7 +20,7 @@ npm run type-check
 
 5. Commit the manifest/code changes.
 6. Trigger **Build food seed** from GitHub Actions.
-7. Confirm the workflow publishes `foods.seed.json`, `foods.manifest.json`, and `foods.qa.json` to the release tag from `manifest.releaseTag`.
+7. Confirm the workflow publishes `foods.seed.json`, `foods-{country}.branded.json`, `foods.manifest.json`, and `foods.qa.json` to the release tag from `manifest.releaseTag`.
 
 ## Inputs
 
@@ -37,6 +37,7 @@ Enabled sources:
 `npm run build:food-seed` writes:
 
 - `generated/food-seed/foods.seed.json`
+- `generated/food-seed/foods-{country}.branded.json`
 - `generated/food-seed/foods.manifest.json`
 - `generated/food-seed/foods.qa.json`
 

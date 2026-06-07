@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -119,6 +119,7 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
       providerId: '1234567890123',
       name: 'Peanut Butter',
       brandName: 'Example Brand',
+      countryCode: 'us',
       region: 'global',
       caloriesPer100g: 588,
       proteinPer100g: 25,
@@ -130,6 +131,8 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
       servingDescription: null,
       servingWeightsG: {},
       barcode: '1234567890123',
+      imageUrl: 'https://static.openfoodfacts.org/images/products/123/front_en.1.400.jpg',
+      license: 'ODbL',
       sourceUpdatedAt: null,
       warnings: [],
     }),
@@ -138,6 +141,114 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
 
   assert.equal(food.id, 'off-1234567890123');
   assert.equal(food.source, 'openfoodfacts');
+  assert.equal(food.brandName, 'Example Brand');
+  assert.equal(food.countryCode, 'us');
+  assert.equal(food.license, 'ODbL');
+});
+
+test('parseOpenFoodFactsDirectory tags country brand license and image quality', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '3456789012345',
+      product_name: 'Muesli',
+      brands: 'Breakfast Co',
+      countries_tags: ['en:united-states', 'en:canada'],
+      image_front_url: 'https://static.openfoodfacts.org/images/products/345/front_en.1.400.jpg',
+      last_modified_t: '1780876800',
+      nutriments: {
+        'energy-kcal_100g': 350,
+        proteins_100g: 10,
+        carbohydrates_100g: 60,
+        fat_100g: 8,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.brandName, 'Breakfast Co');
+  assert.equal(record.countryCode, 'us');
+  assert.equal(record.imageUrl, 'https://static.openfoodfacts.org/images/products/345/front_en.1.400.jpg');
+  assert.equal(record.license, 'ODbL');
+  assert.equal(record.sourceUpdatedAt, '1780876800');
+  assert.equal(record.qualityScore, 9);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('buildFoodSeedArtifacts splits generic and branded outputs by country', async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
+  const usdaDir = path.join(rootDir, 'usda');
+  const offDir = path.join(rootDir, 'off');
+  const outputDir = path.join(rootDir, 'out');
+  await mkdir(usdaDir, { recursive: true });
+  await mkdir(offDir, { recursive: true });
+
+  await writeFile(
+    path.join(usdaDir, 'food.csv'),
+    [
+      'fdc_id,data_type,description,publication_date',
+      '1000,Foundation,"Tomatoes, raw",2026-04-30',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(usdaDir, 'food_nutrient.csv'),
+    [
+      'fdc_id,nutrient_id,amount',
+      '1000,1008,18',
+      '1000,1003,0.9',
+      '1000,1005,3.9',
+      '1000,1004,0.2',
+    ].join('\n')
+  );
+  await writeFile(path.join(usdaDir, 'food_portion.csv'), 'fdc_id,gram_weight\n');
+  await writeFile(path.join(usdaDir, 'measure_unit.csv'), 'id,name\n');
+  await writeFile(
+    path.join(offDir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '4567890123456',
+      product_name: 'Peanut Butter',
+      brands: 'Example Brand',
+      countries_tags: ['en:united-states'],
+      nutriments: {
+        'energy-kcal_100g': 588,
+        proteins_100g: 25,
+        carbohydrates_100g: 20,
+        fat_100g: 50,
+      },
+    })}\n`
+  );
+
+  const summary = await testExports.buildFoodSeedArtifacts({
+    usdaDir,
+    openFoodFactsDir: offDir,
+    outputDir,
+  });
+  const genericFoods = JSON.parse(await readFile(path.join(outputDir, 'foods.seed.json'), 'utf8'));
+  const brandedFoods = JSON.parse(
+    await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
+  );
+  const manifest = JSON.parse(await readFile(path.join(outputDir, 'foods.manifest.json'), 'utf8'));
+
+  assert.equal(summary.genericSeedCount, 1);
+  assert.equal(summary.brandedSeedCount, 1);
+  assert.equal(genericFoods.length, 1);
+  assert.equal(genericFoods[0].source, 'usda');
+  assert.equal(genericFoods[0].countryCode, null);
+  assert.equal(genericFoods[0].license, 'public-domain');
+  assert.equal(brandedFoods.length, 1);
+  assert.equal(brandedFoods[0].source, 'openfoodfacts');
+  assert.equal(brandedFoods[0].brandName, 'Example Brand');
+  assert.equal(brandedFoods[0].countryCode, 'us');
+  assert.equal(manifest.stagingSchemaVersion, 2);
+  assert.equal(manifest.totals.genericSeedCount, 1);
+  assert.equal(manifest.totals.brandedSeedCount, 1);
+
+  await rm(rootDir, { recursive: true, force: true });
 });
 
 test('parseBuildArgs requires Open Food Facts directory instead of AUSNUT', () => {
