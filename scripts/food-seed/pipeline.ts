@@ -17,6 +17,8 @@ export interface FoodSeedBuildArgs {
 export interface SeedFood {
   id: string;
   name: string;
+  brandName: string | null;
+  countryCode: string | null;
   caloriesPer100g: number;
   proteinPer100g: number;
   carbsPer100g: number;
@@ -28,6 +30,8 @@ export interface SeedFood {
   servingWeightsG: Record<string, number>;
   barcode: string | null;
   source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
+  license: string;
+  sourceUpdatedAt: string | null;
   createdAt: string;
 }
 
@@ -36,6 +40,7 @@ export interface SeedStagingRecord {
   providerId: string;
   name: string;
   brandName: string | null;
+  countryCode: string | null;
   region: 'us' | 'au' | 'global';
   caloriesPer100g: number | null;
   proteinPer100g: number | null;
@@ -47,6 +52,8 @@ export interface SeedStagingRecord {
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
   barcode: string | null;
+  imageUrl: string | null;
+  license: string;
   sourceUpdatedAt: string | null;
   qualityScore: number;
   warnings: string[];
@@ -77,7 +84,7 @@ interface QADuplicateGroup {
 
 interface SeedManifest {
   generatedAt: string;
-  stagingSchemaVersion: 1;
+  stagingSchemaVersion: 2;
   sources: {
     sourceId: string;
     provider: string;
@@ -94,6 +101,8 @@ interface SeedManifest {
   totals: {
     stagingRecordCount: number;
     seedCount: number;
+    genericSeedCount: number;
+    brandedSeedCount: number;
     rejectedRowCount: number;
     duplicateGroupCount: number;
   };
@@ -104,6 +113,8 @@ interface SeedQAReport {
   counts: {
     stagingRecords: number;
     emittedFoods: number;
+    genericFoods: number;
+    brandedFoods: number;
     rejectedRows: number;
     duplicateGroups: number;
   };
@@ -113,7 +124,8 @@ interface SeedQAReport {
 
 interface BuildSummary {
   outputDir: string;
-  seedCount: number;
+  genericSeedCount: number;
+  brandedSeedCount: number;
   sourceCount: number;
   rejectedCount: number;
   duplicateCount: number;
@@ -144,6 +156,32 @@ const FSANZ_HEADER_MATCHERS = {
 } as const;
 
 const COMMON_SERVING_UNITS = ['cup', 'tbsp', 'tsp', 'fl_oz'] as const;
+
+const OFF_COUNTRY_CODES_BY_TAG: Record<string, string> = {
+  australia: 'au',
+  austria: 'at',
+  belgium: 'be',
+  brazil: 'br',
+  canada: 'ca',
+  denmark: 'dk',
+  france: 'fr',
+  germany: 'de',
+  hongkong: 'hk',
+  'hong-kong': 'hk',
+  india: 'in',
+  ireland: 'ie',
+  italy: 'it',
+  japan: 'jp',
+  mexico: 'mx',
+  netherlands: 'nl',
+  'new-zealand': 'nz',
+  spain: 'es',
+  sweden: 'se',
+  switzerland: 'ch',
+  'united-kingdom': 'gb',
+  'united-states': 'us',
+  'united-states-of-america': 'us',
+};
 
 interface ServingMeasure {
   grams: number;
@@ -370,8 +408,10 @@ function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'>): num
     score += 3;
   }
   if (record.servingSizeG != null) score += 2;
-  if (Object.keys(record.servingWeightsG).length > 0) score += 1;
+  if (Object.keys(record.servingWeightsG).length > 0) score += 2;
   if (record.barcode) score += 1;
+  if (record.brandName) score += 1;
+  if (record.imageUrl) score += 1;
   if (
     record.caloriesPer100g != null &&
     record.caloriesPer100g >= 100 &&
@@ -407,6 +447,8 @@ function buildSeedFood(record: SeedStagingRecord, generatedAt: string): SeedFood
   return {
     id: `${idPrefix}-${record.providerId}`,
     name: record.name,
+    brandName: record.brandName,
+    countryCode: record.countryCode,
     caloriesPer100g: record.caloriesPer100g ?? 0,
     proteinPer100g: record.proteinPer100g ?? 0,
     carbsPer100g: record.carbsPer100g ?? 0,
@@ -418,6 +460,8 @@ function buildSeedFood(record: SeedStagingRecord, generatedAt: string): SeedFood
     servingWeightsG: record.servingWeightsG,
     barcode: record.barcode,
     source,
+    license: record.license,
+    sourceUpdatedAt: record.sourceUpdatedAt,
     createdAt: generatedAt,
   };
 }
@@ -738,7 +782,7 @@ async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[]> {
     sourceId: 'usda-foundation',
     provider: 'usda',
     releaseDate: null,
-    license: 'USDA FoodData Central public domain',
+    license: 'public-domain',
     inputFiles: usdaInputFiles,
     stagingRecords: [],
     rejectedRows: [],
@@ -747,7 +791,7 @@ async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[]> {
     sourceId: 'usda-sr-legacy',
     provider: 'usda',
     releaseDate: null,
-    license: 'USDA FoodData Central public domain',
+    license: 'public-domain',
     inputFiles: usdaInputFiles,
     stagingRecords: [],
     rejectedRows: [],
@@ -773,6 +817,7 @@ async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[]> {
       providerId,
       name: normalizeDisplayName(row.description ?? ''),
       brandName: null,
+      countryCode: null,
       region: 'us',
       caloriesPer100g: nutrients.calories != null ? roundNumber(nutrients.calories) : null,
       proteinPer100g: nutrients.protein != null ? roundNumber(nutrients.protein) : null,
@@ -784,6 +829,8 @@ async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[]> {
       servingDescription: serving?.description ?? null,
       servingWeightsG: serving?.weightsG ?? {},
       barcode: null,
+      imageUrl: null,
+      license: 'public-domain',
       sourceUpdatedAt: row.publication_date || null,
       warnings: [],
     });
@@ -916,6 +963,7 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       providerId,
       name: normalizeDisplayName(rawName),
       brandName: null,
+      countryCode: null,
       region: 'au',
       caloriesPer100g: nutrients.calories,
       proteinPer100g: nutrients.protein,
@@ -927,6 +975,8 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       servingDescription: null,
       servingWeightsG: {},
       barcode: null,
+      imageUrl: null,
+      license: 'CC BY 4.0',
       sourceUpdatedAt: parsed.releaseDate,
       warnings: [],
     });
@@ -983,6 +1033,33 @@ function stringValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function stringListValue(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === 'string' && item.trim() !== '');
+  }
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeOpenFoodFactsCountryCode(countriesTags: unknown): string | null {
+  for (const countryTag of stringListValue(countriesTags)) {
+    const tag = countryTag
+      .toLowerCase()
+      .replace(/^[a-z]{2}:/, '')
+      .replace(/_/g, '-')
+      .trim();
+    if (/^[a-z]{2}$/.test(tag)) return tag;
+    const mapped = OFF_COUNTRY_CODES_BY_TAG[tag];
+    if (mapped) return mapped;
+  }
+  return null;
+}
+
 function numberValue(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value === 'string') return parseNumber(value);
@@ -1031,7 +1108,7 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
     sourceId: 'openfoodfacts-jsonl',
     provider: 'openfoodfacts',
     releaseDate: null,
-    license: 'Open Food Facts Database License (ODbL)',
+    license: 'ODbL',
     inputFiles: files,
     stagingRecords: [],
     rejectedRows: [],
@@ -1066,11 +1143,16 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
           return energyKj != null ? roundNumber(energyKj * 0.239005736) : null;
         })();
       const serving = parseOpenFoodFactsServing(product);
+      const imageUrl =
+        stringValue(product.image_front_url) ??
+        stringValue(product.image_url) ??
+        stringValue(product.image_small_url);
       const record = createStagingRecord({
         provider: 'openfoodfacts',
         providerId,
         name: normalizeDisplayName(rawName),
         brandName: stringValue(product.brands),
+        countryCode: normalizeOpenFoodFactsCountryCode(product.countries_tags),
         region: 'global',
         caloriesPer100g: calories,
         proteinPer100g: firstNumberValue(nutriments.proteins_100g, nutriments.proteins),
@@ -1087,6 +1169,8 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
         servingDescription: serving?.description ?? null,
         servingWeightsG: serving?.weightsG ?? {},
         barcode: providerId,
+        imageUrl,
+        license: 'ODbL',
         sourceUpdatedAt: stringValue(product.last_modified_t),
         warnings: [],
       });
@@ -1111,7 +1195,8 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
 
 async function buildManifest(
   sources: ParsedSource[],
-  seedFoods: SeedFood[],
+  genericSeedFoods: SeedFood[],
+  brandedSeedFoods: SeedFood[],
   duplicateGroups: QADuplicateGroup[],
   generatedAt: string
 ): Promise<SeedManifest> {
@@ -1131,15 +1216,29 @@ async function buildManifest(
 
   return {
     generatedAt,
-    stagingSchemaVersion: 1,
+    stagingSchemaVersion: 2,
     sources: manifestSources,
     totals: {
       stagingRecordCount: sources.reduce((sum, source) => sum + source.stagingRecords.length, 0),
-      seedCount: seedFoods.length,
+      seedCount: genericSeedFoods.length + brandedSeedFoods.length,
+      genericSeedCount: genericSeedFoods.length,
+      brandedSeedCount: brandedSeedFoods.length,
       rejectedRowCount: sources.reduce((sum, source) => sum + source.rejectedRows.length, 0),
       duplicateGroupCount: duplicateGroups.length,
     },
   };
+}
+
+function groupBrandedFoodsByCountry(seedFoods: SeedFood[]): Map<string, SeedFood[]> {
+  const groups = new Map<string, SeedFood[]>();
+  for (const seedFood of seedFoods) {
+    const countryCode = seedFood.countryCode ?? 'unknown';
+    const group = groups.get(countryCode) ?? [];
+    group.push(seedFood);
+    groups.set(countryCode, group);
+  }
+
+  return new Map([...groups.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }
 
 export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
@@ -1190,14 +1289,36 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   ];
   const stagingRecords = sources.flatMap((source) => source.stagingRecords);
   const rejectedRows = sources.flatMap((source) => source.rejectedRows);
-  const { records: dedupedRecords, duplicateGroups } = dedupeSeedRecords(stagingRecords);
-  const seedFoods = dedupedRecords.map((record) => buildSeedFood(record, generatedAt));
-  const manifest = await buildManifest(sources, seedFoods, duplicateGroups, generatedAt);
+  const genericStagingRecords = stagingRecords.filter((record) => record.provider !== 'openfoodfacts');
+  const brandedStagingRecords = stagingRecords.filter((record) => record.provider === 'openfoodfacts');
+  const {
+    records: dedupedGenericRecords,
+    duplicateGroups: genericDuplicateGroups,
+  } = dedupeSeedRecords(genericStagingRecords);
+  const {
+    records: dedupedBrandedRecords,
+    duplicateGroups: brandedDuplicateGroups,
+  } = dedupeSeedRecords(brandedStagingRecords);
+  const duplicateGroups = [...genericDuplicateGroups, ...brandedDuplicateGroups].sort((left, right) =>
+    left.normalizedName.localeCompare(right.normalizedName)
+  );
+  const genericSeedFoods = dedupedGenericRecords.map((record) => buildSeedFood(record, generatedAt));
+  const brandedSeedFoods = dedupedBrandedRecords.map((record) => buildSeedFood(record, generatedAt));
+  const brandedFoodsByCountry = groupBrandedFoodsByCountry(brandedSeedFoods);
+  const manifest = await buildManifest(
+    sources,
+    genericSeedFoods,
+    brandedSeedFoods,
+    duplicateGroups,
+    generatedAt
+  );
   const qaReport: SeedQAReport = {
     generatedAt,
     counts: {
       stagingRecords: stagingRecords.length,
-      emittedFoods: seedFoods.length,
+      emittedFoods: genericSeedFoods.length + brandedSeedFoods.length,
+      genericFoods: genericSeedFoods.length,
+      brandedFoods: brandedSeedFoods.length,
       rejectedRows: rejectedRows.length,
       duplicateGroups: duplicateGroups.length,
     },
@@ -1206,12 +1327,20 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   };
 
   await fs.mkdir(args.outputDir, { recursive: true });
+  const brandedWrites = [...brandedFoodsByCountry.entries()].map(([countryCode, foods]) =>
+    fs.writeFile(
+      path.join(args.outputDir, `foods-${countryCode}.branded.json`),
+      `${JSON.stringify(foods, null, 2)}\n`,
+      'utf8'
+    )
+  );
   await Promise.all([
     fs.writeFile(
       path.join(args.outputDir, 'foods.seed.json'),
-      `${JSON.stringify(seedFoods, null, 2)}\n`,
+      `${JSON.stringify(genericSeedFoods, null, 2)}\n`,
       'utf8'
     ),
+    ...brandedWrites,
     fs.writeFile(
       path.join(args.outputDir, 'foods.manifest.json'),
       `${JSON.stringify(manifest, null, 2)}\n`,
@@ -1226,7 +1355,8 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
 
   return {
     outputDir: args.outputDir,
-    seedCount: seedFoods.length,
+    genericSeedCount: genericSeedFoods.length,
+    brandedSeedCount: brandedSeedFoods.length,
     sourceCount: sources.length,
     rejectedCount: rejectedRows.length,
     duplicateCount: duplicateGroups.length,
@@ -1250,5 +1380,6 @@ export const testExports = {
   readManifestFileInfo,
   readWorkbookRows,
   parseBuildArgs,
+  buildFoodSeedArtifacts,
   sha256,
 };
