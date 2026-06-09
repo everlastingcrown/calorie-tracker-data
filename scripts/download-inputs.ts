@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { createReadStream, promises as fs } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { readFoodSeedInputManifest } from './food-seed/input-manifest.ts';
 import type { FoodSeedInputManifest, FoodSeedManifestFile } from './food-seed/input-manifest.ts';
 
 const execFileAsync = promisify(execFile);
+const MAX_DOWNLOAD_ATTEMPTS = 3;
 
 interface DownloadArgs {
   manifestPath: string;
@@ -72,15 +76,42 @@ function cachedFilePath(cacheDir: string, file: FoodSeedManifestFile): string {
   return path.join(cacheDir, `${file.sha256}-${file.fileName}`);
 }
 
-async function downloadFile(url: string, filePath: string): Promise<void> {
+async function downloadFileOnce(url: string, filePath: string): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`);
   }
+  if (!response.body) {
+    throw new Error(`Failed to download ${url}: empty response body`);
+  }
 
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  await fs.writeFile(filePath, bytes);
+  const body = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
+  await pipeline(body, createWriteStream(filePath));
+}
+
+async function downloadFile(url: string, filePath: string): Promise<void> {
+  const tempPath = `${filePath}.tmp-${process.pid}`;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt += 1) {
+    await fs.rm(tempPath, { force: true });
+    try {
+      await downloadFileOnce(url, tempPath);
+      await fs.rename(tempPath, filePath);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_DOWNLOAD_ATTEMPTS) {
+        const delayMs = 1000 * attempt;
+        process.stdout.write(`Download failed for ${url}; retrying in ${delayMs}ms\n`);
+        await sleep(delayMs);
+      }
+    }
+  }
+
+  await fs.rm(tempPath, { force: true });
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 async function ensureCachedFile(cacheDir: string, file: FoodSeedManifestFile): Promise<string> {

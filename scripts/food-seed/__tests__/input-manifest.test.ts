@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { parseDownloadArgs } from '../../download-inputs.ts';
+import { downloadManifestInputs, parseDownloadArgs } from '../../download-inputs.ts';
 import { readFoodSeedInputManifest } from '../input-manifest.ts';
 
 test('readFoodSeedInputManifest validates schema and hashes', async () => {
@@ -59,4 +60,48 @@ test('parseDownloadArgs supports manifest, cache, output, and disabled source fl
   assert.equal(args.cacheDir, '/tmp/cache');
   assert.equal(args.outputDir, '/tmp/out');
   assert.equal(args.includeDisabled, true);
+});
+
+test('downloadManifestInputs writes verified manifest files to source output directories', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-download-'));
+  const cacheDir = path.join(dir, 'cache');
+  const outputDir = path.join(dir, 'inputs');
+  const contents = 'seed input fixture\n';
+  const sha256 = createHash('sha256').update(contents).digest('hex');
+
+  await downloadManifestInputs(
+    {
+      schemaVersion: 1,
+      releaseTag: 'food-seed-test',
+      sources: [
+        {
+          id: 'fixture-source',
+          provider: 'usda',
+          title: 'Fixture source',
+          version: 'test',
+          enabled: true,
+          outputDir: 'fixture',
+          files: [
+            {
+              id: 'fixture-file',
+              url: `data:text/plain,${encodeURIComponent(contents)}`,
+              sha256,
+              fileName: 'fixture.txt',
+            },
+          ],
+        },
+      ],
+    },
+    {
+      manifestPath: path.join(dir, 'manifest.json'),
+      cacheDir,
+      outputDir,
+      includeDisabled: false,
+    }
+  );
+
+  const downloaded = await readFile(path.join(outputDir, 'fixture', 'fixture.txt'), 'utf8');
+  assert.equal(downloaded, contents);
+
+  await rm(dir, { recursive: true, force: true });
 });
