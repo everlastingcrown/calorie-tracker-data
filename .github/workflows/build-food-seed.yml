@@ -10,7 +10,7 @@ jobs:
   build-food-seed:
     name: Build and publish food seed
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
 
     steps:
       - name: Checkout
@@ -25,11 +25,20 @@ jobs:
       - name: Install dependencies
         run: npm ci --include=dev
 
+      - name: Run tests
+        run: npm run test
+
+      - name: Type check
+        run: npm run type-check
+
       - name: Download source inputs
         run: npm run download:inputs
 
       - name: Build food seed artifacts
         run: npm run build:food-seed
+
+      - name: Check runner storage
+        run: df -h .
 
       - name: Resolve release tag
         id: release_tag
@@ -40,10 +49,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
         run: |
+          shopt -s nullglob
+          release_assets=(
+            generated/food-seed/foods.seed.json
+            generated/food-seed/foods.manifest.json
+            generated/food-seed/foods.qa.json
+            generated/food-seed/foods-*.branded.json
+          )
+
+          if ((${#release_assets[@]} < 4)); then
+            echo "Expected core artifacts plus at least one branded country artifact."
+            find generated/food-seed -maxdepth 1 -type f -print
+            exit 1
+          fi
+
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_TAG" \
             --notes "Food seed artifacts built from inputs/manifest.json." \
-            generated/food-seed/foods.seed.json \
-            generated/food-seed/foods.manifest.json \
-            generated/food-seed/foods.qa.json
+            "${release_assets[@]}"
