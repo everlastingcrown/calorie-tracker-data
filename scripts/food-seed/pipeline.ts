@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { once } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
-import { createReadStream, promises as fs } from 'node:fs';
+import { createReadStream, createWriteStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createGunzip } from 'node:zlib';
 import * as XLSXModule from 'xlsx';
@@ -67,6 +68,8 @@ interface ParsedSource {
   inputFiles: string[];
   stagingRecords: SeedStagingRecord[];
   rejectedRows: RejectedRow[];
+  stagingRecordCount?: number;
+  rejectedRowCount?: number;
 }
 
 interface RejectedRow {
@@ -129,6 +132,15 @@ interface BuildSummary {
   sourceCount: number;
   rejectedCount: number;
   duplicateCount: number;
+}
+
+interface DedupeAccumulator {
+  recordsByName: Map<string, SeedStagingRecord>;
+  duplicateGroupsByName: Map<string, QADuplicateGroup>;
+}
+
+interface OpenFoodFactsParseOptions {
+  onStagingRecord?: (record: SeedStagingRecord) => void;
 }
 
 const USDA_NUTRIENTS = {
@@ -516,6 +528,48 @@ function dedupeSeedRecords(records: SeedStagingRecord[]): {
   duplicateGroups.sort((left, right) => left.normalizedName.localeCompare(right.normalizedName));
 
   return { records: deduped, duplicateGroups };
+}
+
+function createDedupeAccumulator(): DedupeAccumulator {
+  return {
+    recordsByName: new Map(),
+    duplicateGroupsByName: new Map(),
+  };
+}
+
+function addDedupeRecord(accumulator: DedupeAccumulator, record: SeedStagingRecord): void {
+  const normalizedName = normalizedNameKey(record.name);
+  const existing = accumulator.recordsByName.get(normalizedName);
+  if (!existing) {
+    accumulator.recordsByName.set(normalizedName, record);
+    return;
+  }
+
+  const [kept, dropped] = [existing, record].sort(compareRecords);
+  accumulator.recordsByName.set(normalizedName, kept);
+
+  const duplicateGroup = accumulator.duplicateGroupsByName.get(normalizedName) ?? {
+    normalizedName,
+    keptId: kept.providerId,
+    droppedIds: [],
+  };
+  duplicateGroup.keptId = kept.providerId;
+  duplicateGroup.droppedIds.push(dropped.providerId);
+  accumulator.duplicateGroupsByName.set(normalizedName, duplicateGroup);
+}
+
+function finalizeDedupeAccumulator(accumulator: DedupeAccumulator): {
+  records: SeedStagingRecord[];
+  duplicateGroups: QADuplicateGroup[];
+} {
+  const records = [...accumulator.recordsByName.values()].sort((left, right) =>
+    left.name.localeCompare(right.name)
+  );
+  const duplicateGroups = [...accumulator.duplicateGroupsByName.values()].sort((left, right) =>
+    left.normalizedName.localeCompare(right.normalizedName)
+  );
+
+  return { records, duplicateGroups };
 }
 
 interface CsvRowParser {
@@ -1098,7 +1152,10 @@ function parseOpenFoodFactsServing(product: Record<string, unknown>): ServingMea
   });
 }
 
-async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<ParsedSource[]> {
+async function parseOpenFoodFactsDirectory(
+  openFoodFactsDir: string,
+  options: OpenFoodFactsParseOptions = {}
+): Promise<ParsedSource[]> {
   const files = await listOpenFoodFactsFiles(openFoodFactsDir);
   if (files.length === 0) {
     throw new Error(`Could not find Open Food Facts JSONL files in ${openFoodFactsDir}`);
@@ -1112,6 +1169,8 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
     inputFiles: files,
     stagingRecords: [],
     rejectedRows: [],
+    stagingRecordCount: 0,
+    rejectedRowCount: 0,
   };
 
   for (const filePath of files) {
@@ -1122,6 +1181,7 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
       try {
         product = JSON.parse(line) as Record<string, unknown>;
       } catch {
+        parsed.rejectedRowCount = (parsed.rejectedRowCount ?? parsed.rejectedRows.length) + 1;
         parsed.rejectedRows.push({
           provider: 'openfoodfacts',
           providerId: '',
@@ -1177,6 +1237,7 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
 
       const rejectionReason = shouldRejectRecord(record);
       if (rejectionReason) {
+        parsed.rejectedRowCount = (parsed.rejectedRowCount ?? parsed.rejectedRows.length) + 1;
         parsed.rejectedRows.push({
           provider: 'openfoodfacts',
           providerId,
@@ -1186,7 +1247,12 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
         continue;
       }
 
-      parsed.stagingRecords.push(record);
+      parsed.stagingRecordCount = (parsed.stagingRecordCount ?? parsed.stagingRecords.length) + 1;
+      if (options.onStagingRecord) {
+        options.onStagingRecord(record);
+      } else {
+        parsed.stagingRecords.push(record);
+      }
     }
   }
 
@@ -1195,8 +1261,7 @@ async function parseOpenFoodFactsDirectory(openFoodFactsDir: string): Promise<Pa
 
 async function buildManifest(
   sources: ParsedSource[],
-  genericSeedFoods: SeedFood[],
-  brandedSeedFoods: SeedFood[],
+  seedCounts: { generic: number; branded: number },
   duplicateGroups: QADuplicateGroup[],
   generatedAt: string
 ): Promise<SeedManifest> {
@@ -1209,9 +1274,18 @@ async function buildManifest(
       releaseDate: source.releaseDate,
       license: source.license,
       files: await Promise.all(source.inputFiles.map((filePath) => getManifestFileInfo(filePath))),
-      stagingRecordCount: source.stagingRecords.length,
-      rejectedRowCount: source.rejectedRows.length,
+      stagingRecordCount: source.stagingRecordCount ?? source.stagingRecords.length,
+      rejectedRowCount: source.rejectedRowCount ?? source.rejectedRows.length,
     }))
+  );
+
+  const stagingRecordCount = sources.reduce(
+    (sum, source) => sum + (source.stagingRecordCount ?? source.stagingRecords.length),
+    0
+  );
+  const rejectedRowCount = sources.reduce(
+    (sum, source) => sum + (source.rejectedRowCount ?? source.rejectedRows.length),
+    0
   );
 
   return {
@@ -1219,26 +1293,65 @@ async function buildManifest(
     stagingSchemaVersion: 2,
     sources: manifestSources,
     totals: {
-      stagingRecordCount: sources.reduce((sum, source) => sum + source.stagingRecords.length, 0),
-      seedCount: genericSeedFoods.length + brandedSeedFoods.length,
-      genericSeedCount: genericSeedFoods.length,
-      brandedSeedCount: brandedSeedFoods.length,
-      rejectedRowCount: sources.reduce((sum, source) => sum + source.rejectedRows.length, 0),
+      stagingRecordCount,
+      seedCount: seedCounts.generic + seedCounts.branded,
+      genericSeedCount: seedCounts.generic,
+      brandedSeedCount: seedCounts.branded,
+      rejectedRowCount,
       duplicateGroupCount: duplicateGroups.length,
     },
   };
 }
 
-function groupBrandedFoodsByCountry(seedFoods: SeedFood[]): Map<string, SeedFood[]> {
-  const groups = new Map<string, SeedFood[]>();
-  for (const seedFood of seedFoods) {
-    const countryCode = seedFood.countryCode ?? 'unknown';
+function countStagingRecords(sources: ParsedSource[]): number {
+  return sources.reduce(
+    (sum, source) => sum + (source.stagingRecordCount ?? source.stagingRecords.length),
+    0
+  );
+}
+
+function countRejectedRows(sources: ParsedSource[]): number {
+  return sources.reduce(
+    (sum, source) => sum + (source.rejectedRowCount ?? source.rejectedRows.length),
+    0
+  );
+}
+
+function groupBrandedRecordsByCountry(
+  records: SeedStagingRecord[]
+): Map<string, SeedStagingRecord[]> {
+  const groups = new Map<string, SeedStagingRecord[]>();
+  for (const record of records) {
+    const countryCode = record.countryCode ?? 'unknown';
     const group = groups.get(countryCode) ?? [];
-    group.push(seedFood);
+    group.push(record);
     groups.set(countryCode, group);
   }
 
   return new Map([...groups.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+async function writeJsonArray<T>(
+  filePath: string,
+  items: Iterable<T>,
+  mapItem: (item: T) => unknown = (item) => item
+): Promise<void> {
+  const stream = createWriteStream(filePath, { encoding: 'utf8' });
+  try {
+    if (!stream.write('[\n')) await once(stream, 'drain');
+    let index = 0;
+    for (const item of items) {
+      const prefix = index === 0 ? '  ' : ',\n  ';
+      const line = `${prefix}${JSON.stringify(mapItem(item), null, 2).replace(/\n/g, '\n  ')}`;
+      if (!stream.write(line)) await once(stream, 'drain');
+      index += 1;
+    }
+    stream.end('\n]\n');
+    await once(stream, 'finish');
+  } catch (error) {
+    stream.destroy();
+    throw error;
+  }
 }
 
 export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
@@ -1282,15 +1395,17 @@ export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
 
 export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<BuildSummary> {
   const generatedAt = new Date().toISOString();
+  const brandedAccumulator = createDedupeAccumulator();
   const sources = [
     ...(await parseUsdaDirectory(args.usdaDir)),
     ...(args.afcdDir ? await parseAfcdDirectory(args.afcdDir) : []),
-    ...(await parseOpenFoodFactsDirectory(args.openFoodFactsDir)),
+    ...(await parseOpenFoodFactsDirectory(args.openFoodFactsDir, {
+      onStagingRecord: (record) => addDedupeRecord(brandedAccumulator, record),
+    })),
   ];
   const stagingRecords = sources.flatMap((source) => source.stagingRecords);
   const rejectedRows = sources.flatMap((source) => source.rejectedRows);
   const genericStagingRecords = stagingRecords.filter((record) => record.provider !== 'openfoodfacts');
-  const brandedStagingRecords = stagingRecords.filter((record) => record.provider === 'openfoodfacts');
   const {
     records: dedupedGenericRecords,
     duplicateGroups: genericDuplicateGroups,
@@ -1298,28 +1413,28 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   const {
     records: dedupedBrandedRecords,
     duplicateGroups: brandedDuplicateGroups,
-  } = dedupeSeedRecords(brandedStagingRecords);
+  } = finalizeDedupeAccumulator(brandedAccumulator);
   const duplicateGroups = [...genericDuplicateGroups, ...brandedDuplicateGroups].sort((left, right) =>
     left.normalizedName.localeCompare(right.normalizedName)
   );
   const genericSeedFoods = dedupedGenericRecords.map((record) => buildSeedFood(record, generatedAt));
-  const brandedSeedFoods = dedupedBrandedRecords.map((record) => buildSeedFood(record, generatedAt));
-  const brandedFoodsByCountry = groupBrandedFoodsByCountry(brandedSeedFoods);
+  const brandedRecordsByCountry = groupBrandedRecordsByCountry(dedupedBrandedRecords);
+  const stagingRecordCount = countStagingRecords(sources);
+  const rejectedRowCount = countRejectedRows(sources);
   const manifest = await buildManifest(
     sources,
-    genericSeedFoods,
-    brandedSeedFoods,
+    { generic: genericSeedFoods.length, branded: dedupedBrandedRecords.length },
     duplicateGroups,
     generatedAt
   );
   const qaReport: SeedQAReport = {
     generatedAt,
     counts: {
-      stagingRecords: stagingRecords.length,
-      emittedFoods: genericSeedFoods.length + brandedSeedFoods.length,
+      stagingRecords: stagingRecordCount,
+      emittedFoods: genericSeedFoods.length + dedupedBrandedRecords.length,
       genericFoods: genericSeedFoods.length,
-      brandedFoods: brandedSeedFoods.length,
-      rejectedRows: rejectedRows.length,
+      brandedFoods: dedupedBrandedRecords.length,
+      rejectedRows: rejectedRowCount,
       duplicateGroups: duplicateGroups.length,
     },
     rejectedRows,
@@ -1327,18 +1442,17 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   };
 
   await fs.mkdir(args.outputDir, { recursive: true });
-  const brandedWrites = [...brandedFoodsByCountry.entries()].map(([countryCode, foods]) =>
-    fs.writeFile(
+  const brandedWrites = [...brandedRecordsByCountry.entries()].map(([countryCode, records]) =>
+    writeJsonArray(
       path.join(args.outputDir, `foods-${countryCode}.branded.json`),
-      `${JSON.stringify(foods, null, 2)}\n`,
-      'utf8'
+      records,
+      (record) => buildSeedFood(record, generatedAt)
     )
   );
   await Promise.all([
-    fs.writeFile(
+    writeJsonArray(
       path.join(args.outputDir, 'foods.seed.json'),
-      `${JSON.stringify(genericSeedFoods, null, 2)}\n`,
-      'utf8'
+      genericSeedFoods
     ),
     ...brandedWrites,
     fs.writeFile(
@@ -1356,9 +1470,9 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   return {
     outputDir: args.outputDir,
     genericSeedCount: genericSeedFoods.length,
-    brandedSeedCount: brandedSeedFoods.length,
+    brandedSeedCount: dedupedBrandedRecords.length,
     sourceCount: sources.length,
-    rejectedCount: rejectedRows.length,
+    rejectedCount: rejectedRowCount,
     duplicateCount: duplicateGroups.length,
   };
 }

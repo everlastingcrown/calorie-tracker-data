@@ -251,6 +251,92 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   await rm(rootDir, { recursive: true, force: true });
 });
 
+test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
+  const usdaDir = path.join(rootDir, 'usda');
+  const offDir = path.join(rootDir, 'off');
+  const outputDir = path.join(rootDir, 'out');
+  await mkdir(usdaDir, { recursive: true });
+  await mkdir(offDir, { recursive: true });
+
+  await writeFile(
+    path.join(usdaDir, 'food.csv'),
+    [
+      'fdc_id,data_type,description,publication_date',
+      '1000,Foundation,"Tomatoes, raw",2026-04-30',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(usdaDir, 'food_nutrient.csv'),
+    [
+      'fdc_id,nutrient_id,amount',
+      '1000,1008,18',
+      '1000,1003,0.9',
+      '1000,1005,3.9',
+      '1000,1004,0.2',
+    ].join('\n')
+  );
+  await writeFile(path.join(usdaDir, 'food_portion.csv'), 'fdc_id,gram_weight\n');
+  await writeFile(path.join(usdaDir, 'measure_unit.csv'), 'id,name\n');
+  await writeFile(
+    path.join(offDir, 'products.jsonl'),
+    [
+      JSON.stringify({
+        code: '1111111111111',
+        product_name: 'Peanut Butter',
+        brands: 'Lower Quality Brand',
+        countries_tags: ['en:united-states'],
+        nutriments: {
+          'energy-kcal_100g': 588,
+          proteins_100g: 25,
+          carbohydrates_100g: 20,
+          fat_100g: 50,
+        },
+      }),
+      JSON.stringify({
+        code: '2222222222222',
+        product_name: 'Peanut Butter',
+        brands: 'Better Brand',
+        countries_tags: ['en:united-states'],
+        serving_quantity: '30',
+        serving_size: '2 tbsp (30 g)',
+        image_front_url: 'https://static.openfoodfacts.org/images/products/222/front_en.1.400.jpg',
+        nutriments: {
+          'energy-kcal_100g': 590,
+          proteins_100g: 26,
+          carbohydrates_100g: 21,
+          fat_100g: 51,
+        },
+      }),
+    ].join('\n')
+  );
+
+  const summary = await testExports.buildFoodSeedArtifacts({
+    usdaDir,
+    openFoodFactsDir: offDir,
+    outputDir,
+  });
+  const brandedFoods = JSON.parse(
+    await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
+  );
+  const qaReport = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
+
+  assert.equal(summary.brandedSeedCount, 1);
+  assert.equal(summary.duplicateCount, 1);
+  assert.equal(brandedFoods.length, 1);
+  assert.equal(brandedFoods[0].id, 'off-2222222222222');
+  assert.equal(qaReport.counts.stagingRecords, 3);
+  assert.deepEqual(qaReport.duplicateGroups, [
+    {
+      normalizedName: 'peanut butter',
+      keptId: '2222222222222',
+      droppedIds: ['1111111111111'],
+    },
+  ]);
+
+  await rm(rootDir, { recursive: true, force: true });
+});
+
 test('parseBuildArgs requires Open Food Facts directory instead of AUSNUT', () => {
   const args = testExports.parseBuildArgs([
     '--usda-dir',
