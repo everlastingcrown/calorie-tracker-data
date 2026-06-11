@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releaseTag": "food-seed-2026-04-30-usda-afcd-r3-openfoodfacts-main",
+  "releaseTag": "food-seed-2026-04-30",
   "sources": [
     {
       "id": "usda-foundation-2026-04-30",
@@ -9,6 +9,12 @@
       "version": "2026-04-30",
       "enabled": true,
       "outputDir": "usda",
+      "license": {
+        "name": "CC0 1.0 Universal (public domain)",
+        "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "U.S. Department of Agriculture, Agricultural Research Service, Beltsville Human Nutrition Research Center. FoodData Central. Available from https://fdc.nal.usda.gov/.",
+        "notes": "FoodData Central requests that users list FoodData Central as the data source."
+      },
       "files": [
         {
           "id": "foundation-csv-zip",
@@ -26,6 +32,12 @@
       "version": "release-3",
       "enabled": true,
       "outputDir": "afcd-release-3",
+      "license": {
+        "name": "Creative Commons Attribution 4.0 Australia (CC BY 4.0)",
+        "url": "https://creativecommons.org/licenses/by/4.0/",
+        "attribution": "Food Standards Australia New Zealand.",
+        "notes": "FSANZ website material is CC BY 4.0 unless expressly noted otherwise, excluding FSANZ logos and third-party material."
+      },
       "files": [
         {
           "id": "food-details",
@@ -48,6 +60,12 @@
       "version": "main",
       "enabled": true,
       "outputDir": "openfoodfacts",
+      "license": {
+        "name": "Open Database License (ODbL) 1.0; Database Contents License (DbCL) 1.0",
+        "url": "https://opendatacommons.org/licenses/odbl/1-0/",
+        "attribution": "Contains information from Open Food Facts, made available under the Open Database License.",
+        "notes": "Open Food Facts product images are licensed separately under Creative Commons Attribution-ShareAlike and may contain third-party rights; this pipeline consumes the JSONL data export, not image binaries."
+      },
       "files": [
         {
           "id": "products-jsonl-gz",

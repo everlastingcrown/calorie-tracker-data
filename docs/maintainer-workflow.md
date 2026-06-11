@@ -2,7 +2,7 @@
 
 ## Updating Source Inputs
 
-1. Change the relevant source `url`, `version`, and `releaseTag` in `inputs/manifest.json`.
+1. Change the relevant source `url`, `version`, `releaseTag`, and `license` metadata in `inputs/manifest.json`.
 2. Download the new file outside git.
 3. Compute its SHA256:
 
@@ -18,7 +18,17 @@ sha256sum path/to/source-file
 
 ## Release Tags
 
-The workflow uses `manifest.releaseTag` as the GitHub Release tag. Change it whenever source data versions change so releases remain traceable to input versions.
+The workflow uses `manifest.releaseTag` as the GitHub Release tag and title. Keep the tag concise, for example `food-seed-2026-04-30`, and change it whenever source data versions change so releases remain traceable to input versions.
+
+## Source Licenses
+
+Before enabling or updating a source, verify the source license and attribution requirements from the publisher, then update the source `license` block in `inputs/manifest.json`. The workflow runs `npm run release:notes` and uses the generated body for the GitHub Release description, so license notes in the manifest are published with the artifacts.
+
+For the currently enabled sources, the verified license pages are:
+
+- USDA FoodData Central: https://fdc.nal.usda.gov/
+- Food Standards Australia New Zealand copyright: https://www.foodstandards.gov.au/legal-policies/copyright
+- Open Food Facts API documentation: https://openfoodfacts.github.io/openfoodfacts-server/api/
 
 ## CI Limits
 

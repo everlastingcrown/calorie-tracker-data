@@ -44,6 +44,9 @@ jobs:
         id: release_tag
         run: echo "tag=$(npm run --silent release:tag)" >> "$GITHUB_OUTPUT"
 
+      - name: Generate release notes
+        run: npm run --silent release:notes > release-notes.md
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,5 +69,5 @@ jobs:
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_TAG" \
-            --notes "Food seed artifacts built from inputs/manifest.json." \
+            --notes-file release-notes.md \
             "${release_assets[@]}"
