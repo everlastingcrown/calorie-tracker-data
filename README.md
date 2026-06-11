@@ -32,6 +32,14 @@ Enabled sources:
 - Australian Food Composition Database Release 3 workbooks
 - Open Food Facts JSONL export
 
+## Source Licenses
+
+Generated artifacts include normalized data derived from the enabled public sources in `inputs/manifest.json`. The manifest records the license, source URL, and attribution text for each source so GitHub release notes can be generated consistently.
+
+- USDA FoodData Central Foundation Foods CSV: CC0 1.0 Universal / public domain. Attribution requested: U.S. Department of Agriculture, Agricultural Research Service, Beltsville Human Nutrition Research Center. FoodData Central. Available from https://fdc.nal.usda.gov/.
+- Australian Food Composition Database Release 3: Creative Commons Attribution 4.0 Australia (CC BY 4.0), unless FSANZ notes otherwise for logos or third-party material. Attribution: Food Standards Australia New Zealand.
+- Open Food Facts JSONL export: Open Database License (ODbL) 1.0 for the database and Database Contents License (DbCL) 1.0 for individual contents. Attribution: Contains information from Open Food Facts, made available under the Open Database License. Product images are licensed separately and are not redistributed by this pipeline.
+
 ## Outputs
 
 `npm run build:food-seed` writes:

@@ -8,6 +8,13 @@ export interface FoodSeedManifestFile {
   extract?: 'zip';
 }
 
+export interface FoodSeedManifestLicense {
+  name: string;
+  url: string;
+  attribution: string;
+  notes?: string;
+}
+
 export interface FoodSeedManifestSource {
   id: string;
   provider: 'usda' | 'afcd' | 'openfoodfacts';
@@ -15,6 +22,7 @@ export interface FoodSeedManifestSource {
   version: string;
   enabled: boolean;
   outputDir: string;
+  license: FoodSeedManifestLicense;
   notes?: string;
   files: FoodSeedManifestFile[];
 }
@@ -38,6 +46,9 @@ export async function readFoodSeedInputManifest(
   for (const source of manifest.sources) {
     if (!source.id || !source.outputDir) {
       throw new Error('Manifest source entries must include id and outputDir.');
+    }
+    if (!source.license?.name || !source.license.url || !source.license.attribution) {
+      throw new Error(`Manifest source ${source.id} must include license name, url, and attribution.`);
     }
     for (const file of source.files) {
       if (!/^[a-f0-9]{64}$/.test(file.sha256)) {

@@ -7,6 +7,7 @@
     "download:inputs": "node --experimental-strip-types scripts/download-inputs.ts",
     "build:food-seed": "node --experimental-strip-types scripts/build-food-seed.ts --usda-dir ./inputs/food-seed/usda --afcd-dir ./inputs/food-seed/afcd-release-3 --openfoodfacts-dir ./inputs/food-seed/openfoodfacts --output-dir ./generated/food-seed",
     "release:tag": "node --experimental-strip-types scripts/create-release-tag.ts",
+    "release:notes": "node --experimental-strip-types scripts/create-release-notes.ts",
     "test": "node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "type-check": "tsc --noEmit"
   },
