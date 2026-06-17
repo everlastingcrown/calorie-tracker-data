@@ -413,6 +413,52 @@ function normalizedNameKey(value: string): string {
     .trim();
 }
 
+const DEDUPE_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'by',
+  'for',
+  'of',
+  'the',
+  'with',
+]);
+
+function normalizeDedupeToken(token: string): string {
+  if (token.length <= 3) return token;
+  if (token.endsWith('ies')) return `${token.slice(0, -3)}y`;
+  if (token.endsWith('oes') || token.endsWith('xes') || token.endsWith('ches') || token.endsWith('shes')) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith('s') && !token.endsWith('ss')) return token.slice(0, -1);
+  return token;
+}
+
+function dedupeNameTokens(value: string): string[] {
+  const withoutPackageNoise = normalizeDisplayName(value)
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:g|gram|grams|kg|ml|l|litre|liter|litres|liters|oz|ounce|ounces|lb|lbs|pound|pounds|fl\s*oz)\b/g, ' ')
+    .replace(/\b\d+\s*(?:ct|count|pack|pk|pcs|pieces)\b/g, ' ')
+    .replace(/\b(?:can|cans|jar|jars|bottle|bottles|box|boxes|bag|bags|packet|packets)\b/g, ' ');
+  const tokens = withoutPackageNoise
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token && !DEDUPE_STOP_WORDS.has(token))
+    .map(normalizeDedupeToken);
+
+  return [...new Set(tokens)];
+}
+
+function dedupeNameKey(value: string): string {
+  return dedupeNameTokens(value).join(' ');
+}
+
+function dedupeMatchKey(value: string): string {
+  return dedupeNameTokens(value).sort().join(' ');
+}
+
 function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'>): number {
   let score = 0;
   if (record.caloriesPer100g != null) score += 3;
@@ -504,7 +550,7 @@ function dedupeSeedRecords(records: SeedStagingRecord[]): {
 } {
   const groups = new Map<string, SeedStagingRecord[]>();
   for (const record of records) {
-    const key = normalizedNameKey(record.name);
+    const key = dedupeMatchKey(record.name);
     const list = groups.get(key) ?? [];
     list.push(record);
     groups.set(key, list);
@@ -512,12 +558,12 @@ function dedupeSeedRecords(records: SeedStagingRecord[]): {
 
   const deduped: SeedStagingRecord[] = [];
   const duplicateGroups: QADuplicateGroup[] = [];
-  for (const [normalizedName, group] of groups.entries()) {
+  for (const group of groups.values()) {
     group.sort(compareRecords);
     deduped.push(group[0]);
     if (group.length > 1) {
       duplicateGroups.push({
-        normalizedName,
+        normalizedName: dedupeNameKey(group[0].name),
         keptId: group[0].providerId,
         droppedIds: group.slice(1).map((record) => record.providerId),
       });
@@ -538,24 +584,25 @@ function createDedupeAccumulator(): DedupeAccumulator {
 }
 
 function addDedupeRecord(accumulator: DedupeAccumulator, record: SeedStagingRecord): void {
-  const normalizedName = normalizedNameKey(record.name);
-  const existing = accumulator.recordsByName.get(normalizedName);
+  const matchName = dedupeMatchKey(record.name);
+  const existing = accumulator.recordsByName.get(matchName);
   if (!existing) {
-    accumulator.recordsByName.set(normalizedName, record);
+    accumulator.recordsByName.set(matchName, record);
     return;
   }
 
   const [kept, dropped] = [existing, record].sort(compareRecords);
-  accumulator.recordsByName.set(normalizedName, kept);
+  accumulator.recordsByName.set(matchName, kept);
 
-  const duplicateGroup = accumulator.duplicateGroupsByName.get(normalizedName) ?? {
-    normalizedName,
+  const duplicateGroup = accumulator.duplicateGroupsByName.get(matchName) ?? {
+    normalizedName: dedupeNameKey(kept.name),
     keptId: kept.providerId,
     droppedIds: [],
   };
+  duplicateGroup.normalizedName = dedupeNameKey(kept.name);
   duplicateGroup.keptId = kept.providerId;
   duplicateGroup.droppedIds.push(dropped.providerId);
-  accumulator.duplicateGroupsByName.set(normalizedName, duplicateGroup);
+  accumulator.duplicateGroupsByName.set(matchName, duplicateGroup);
 }
 
 function finalizeDedupeAccumulator(accumulator: DedupeAccumulator): {
@@ -1482,6 +1529,8 @@ export const testExports = {
   parseCsv,
   normalizeDisplayName,
   normalizedNameKey,
+  dedupeNameKey,
+  dedupeMatchKey,
   dedupeSeedRecords,
   createStagingRecord,
   buildSeedFood,

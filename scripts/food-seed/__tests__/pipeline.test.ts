@@ -146,6 +146,67 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   assert.equal(food.license, 'ODbL');
 });
 
+test('dedupeSeedRecords matches fuzzy name variants and keeps the highest quality record', () => {
+  const records = [
+    testExports.createStagingRecord({
+      provider: 'usda_sr_legacy',
+      providerId: 'legacy-1',
+      name: 'Peanuts, roasted salted, 16 oz bag',
+      brandName: null,
+      countryCode: null,
+      region: 'us',
+      caloriesPer100g: 585,
+      proteinPer100g: 24,
+      carbsPer100g: 21,
+      fatPer100g: 49,
+      servingSizeG: null,
+      servingQuantity: null,
+      servingUnit: null,
+      servingDescription: null,
+      servingWeightsG: {},
+      barcode: null,
+      imageUrl: null,
+      license: 'public-domain',
+      sourceUpdatedAt: null,
+      warnings: [],
+    }),
+    testExports.createStagingRecord({
+      provider: 'usda_foundation',
+      providerId: 'foundation-1',
+      name: 'Salted roasted peanut',
+      brandName: null,
+      countryCode: null,
+      region: 'us',
+      caloriesPer100g: 586,
+      proteinPer100g: 25,
+      carbsPer100g: 20,
+      fatPer100g: 50,
+      servingSizeG: 28,
+      servingQuantity: null,
+      servingUnit: null,
+      servingDescription: '1 oz',
+      servingWeightsG: {},
+      barcode: null,
+      imageUrl: null,
+      license: 'public-domain',
+      sourceUpdatedAt: null,
+      warnings: [],
+    }),
+  ];
+
+  const { records: deduped, duplicateGroups } = testExports.dedupeSeedRecords(records);
+
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].providerId, 'foundation-1');
+  assert.deepEqual(duplicateGroups, [
+    {
+      normalizedName: 'salted roasted peanut',
+      keptId: 'foundation-1',
+      droppedIds: ['legacy-1'],
+    },
+  ]);
+});
+
 test('parseOpenFoodFactsDirectory tags country brand license and image quality', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
@@ -331,6 +392,91 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
       normalizedName: 'peanut butter',
       keptId: '2222222222222',
       droppedIds: ['1111111111111'],
+    },
+  ]);
+
+  await rm(rootDir, { recursive: true, force: true });
+});
+
+test('buildFoodSeedArtifacts fuzzy dedupes Open Food Facts rows while streaming', async () => {
+  const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
+  const usdaDir = path.join(rootDir, 'usda');
+  const offDir = path.join(rootDir, 'off');
+  const outputDir = path.join(rootDir, 'out');
+  await mkdir(usdaDir, { recursive: true });
+  await mkdir(offDir, { recursive: true });
+
+  await writeFile(
+    path.join(usdaDir, 'food.csv'),
+    [
+      'fdc_id,data_type,description,publication_date',
+      '1000,Foundation,"Tomatoes, raw",2026-04-30',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(usdaDir, 'food_nutrient.csv'),
+    [
+      'fdc_id,nutrient_id,amount',
+      '1000,1008,18',
+      '1000,1003,0.9',
+      '1000,1005,3.9',
+      '1000,1004,0.2',
+    ].join('\n')
+  );
+  await writeFile(path.join(usdaDir, 'food_portion.csv'), 'fdc_id,gram_weight\n');
+  await writeFile(path.join(usdaDir, 'measure_unit.csv'), 'id,name\n');
+  await writeFile(
+    path.join(offDir, 'products.jsonl'),
+    [
+      JSON.stringify({
+        code: '3333333333333',
+        product_name: 'Crunchy Peanut Butter - 16 oz jar',
+        brands: 'Example Brand',
+        countries_tags: ['en:united-states'],
+        nutriments: {
+          'energy-kcal_100g': 588,
+          proteins_100g: 25,
+          carbohydrates_100g: 20,
+          fat_100g: 50,
+        },
+      }),
+      JSON.stringify({
+        code: '4444444444444',
+        product_name: 'Peanut Butter, Crunchy',
+        brands: 'Example Brand',
+        countries_tags: ['en:united-states'],
+        serving_quantity: '30',
+        serving_size: '2 tbsp (30 g)',
+        image_front_url: 'https://static.openfoodfacts.org/images/products/444/front_en.1.400.jpg',
+        nutriments: {
+          'energy-kcal_100g': 590,
+          proteins_100g: 26,
+          carbohydrates_100g: 21,
+          fat_100g: 51,
+        },
+      }),
+    ].join('\n')
+  );
+
+  const summary = await testExports.buildFoodSeedArtifacts({
+    usdaDir,
+    openFoodFactsDir: offDir,
+    outputDir,
+  });
+  const brandedFoods = JSON.parse(
+    await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
+  );
+  const qaReport = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
+
+  assert.equal(summary.brandedSeedCount, 1);
+  assert.equal(summary.duplicateCount, 1);
+  assert.equal(brandedFoods.length, 1);
+  assert.equal(brandedFoods[0].id, 'off-4444444444444');
+  assert.deepEqual(qaReport.duplicateGroups, [
+    {
+      normalizedName: 'peanut butter crunchy',
+      keptId: '4444444444444',
+      droppedIds: ['3333333333333'],
     },
   ]);
 
