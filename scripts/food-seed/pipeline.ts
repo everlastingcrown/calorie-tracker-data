@@ -135,8 +135,8 @@ interface BuildSummary {
 }
 
 interface DedupeAccumulator {
-  recordsByName: Map<string, SeedStagingRecord>;
-  duplicateGroupsByName: Map<string, QADuplicateGroup>;
+  groups: Set<SeedStagingRecord[]>;
+  groupsByKey: Map<string, SeedStagingRecord[]>;
 }
 
 interface OpenFoodFactsParseOptions {
@@ -459,6 +459,56 @@ function dedupeMatchKey(value: string): string {
   return dedupeNameTokens(value).sort().join(' ');
 }
 
+function canonicalPackageUnit(value: string): string {
+  const compact = value.replace(/\s+/g, '');
+  if (compact === 'gram' || compact === 'grams') return 'g';
+  if (compact === 'litre' || compact === 'liter' || compact === 'litres' || compact === 'liters') return 'l';
+  if (compact === 'ounce' || compact === 'ounces') return 'oz';
+  if (compact === 'lbs' || compact === 'pound' || compact === 'pounds') return 'lb';
+  if (compact === 'count') return 'ct';
+  if (compact === 'pk') return 'pack';
+  if (compact === 'pcs' || compact === 'pieces') return 'pc';
+  return compact;
+}
+
+function dedupePackageKey(value: string): string {
+  const normalized = normalizeDisplayName(value).toLowerCase();
+  const packageParts = [
+    ...normalized.matchAll(
+      /\b(\d+(?:\.\d+)?)\s*(fl\s*oz|g|gram|grams|kg|ml|l|litre|liter|litres|liters|oz|ounce|ounces|lb|lbs|pound|pounds)\b/g
+    ),
+    ...normalized.matchAll(/\b(\d+)\s*(ct|count|pack|pk|pcs|pieces)\b/g),
+  ].map((match) => {
+    const amount = Number.parseFloat(match[1]);
+    const unit = canonicalPackageUnit(match[2]);
+    return `${Number.isInteger(amount) ? amount.toFixed(0) : amount}:${unit}`;
+  });
+
+  return [...new Set(packageParts)].sort().join(' ');
+}
+
+function normalizeDedupeField(value: string | null): string {
+  return value ? normalizedNameKey(value) : '';
+}
+
+function normalizeBarcodeKey(value: string | null): string {
+  return value?.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase() ?? '';
+}
+
+function dedupeIdentityKey(record: SeedStagingRecord): string {
+  return [
+    `name:${dedupeMatchKey(record.name)}`,
+    `brand:${normalizeDedupeField(record.brandName)}`,
+    `country:${record.countryCode?.toLowerCase() ?? ''}`,
+    `package:${dedupePackageKey(record.name)}`,
+  ].join('|');
+}
+
+function dedupeRecordKeys(record: SeedStagingRecord): string[] {
+  const barcodeKey = normalizeBarcodeKey(record.barcode);
+  return barcodeKey ? [`barcode:${barcodeKey}`, dedupeIdentityKey(record)] : [dedupeIdentityKey(record)];
+}
+
 function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'>): number {
   let score = 0;
   if (record.caloriesPer100g != null) score += 3;
@@ -548,73 +598,79 @@ function dedupeSeedRecords(records: SeedStagingRecord[]): {
   records: SeedStagingRecord[];
   duplicateGroups: QADuplicateGroup[];
 } {
-  const groups = new Map<string, SeedStagingRecord[]>();
+  const accumulator = createDedupeAccumulator();
   for (const record of records) {
-    const key = dedupeMatchKey(record.name);
-    const list = groups.get(key) ?? [];
-    list.push(record);
-    groups.set(key, list);
+    addDedupeRecord(accumulator, record);
   }
 
-  const deduped: SeedStagingRecord[] = [];
-  const duplicateGroups: QADuplicateGroup[] = [];
-  for (const group of groups.values()) {
-    group.sort(compareRecords);
-    deduped.push(group[0]);
-    if (group.length > 1) {
-      duplicateGroups.push({
-        normalizedName: dedupeNameKey(group[0].name),
-        keptId: group[0].providerId,
-        droppedIds: group.slice(1).map((record) => record.providerId),
-      });
-    }
-  }
+  return finalizeDedupeAccumulator(accumulator);
+}
 
-  deduped.sort((left, right) => left.name.localeCompare(right.name));
-  duplicateGroups.sort((left, right) => left.normalizedName.localeCompare(right.normalizedName));
+function buildDuplicateGroup(group: SeedStagingRecord[]): {
+  kept: SeedStagingRecord;
+  duplicateGroup: QADuplicateGroup | null;
+} {
+  group.sort(compareRecords);
+  const kept = group[0];
+  const duplicateGroup =
+    group.length > 1
+      ? {
+          normalizedName: dedupeNameKey(kept.name),
+          keptId: kept.providerId,
+          droppedIds: group.slice(1).map((record) => record.providerId),
+        }
+      : null;
 
-  return { records: deduped, duplicateGroups };
+  return { kept, duplicateGroup };
 }
 
 function createDedupeAccumulator(): DedupeAccumulator {
   return {
-    recordsByName: new Map(),
-    duplicateGroupsByName: new Map(),
+    groups: new Set(),
+    groupsByKey: new Map(),
   };
 }
 
 function addDedupeRecord(accumulator: DedupeAccumulator, record: SeedStagingRecord): void {
-  const matchName = dedupeMatchKey(record.name);
-  const existing = accumulator.recordsByName.get(matchName);
-  if (!existing) {
-    accumulator.recordsByName.set(matchName, record);
+  const keys = dedupeRecordKeys(record);
+  const matchingGroups: SeedStagingRecord[][] = [];
+  for (const key of keys) {
+    const group = accumulator.groupsByKey.get(key);
+    if (group && !matchingGroups.includes(group)) matchingGroups.push(group);
+  }
+
+  if (matchingGroups.length === 0) {
+    const group = [record];
+    accumulator.groups.add(group);
+    for (const key of keys) accumulator.groupsByKey.set(key, group);
     return;
   }
 
-  const [kept, dropped] = [existing, record].sort(compareRecords);
-  accumulator.recordsByName.set(matchName, kept);
+  const mergedGroup = [...matchingGroups.flat(), record];
+  for (const group of matchingGroups) accumulator.groups.delete(group);
+  accumulator.groups.add(mergedGroup);
 
-  const duplicateGroup = accumulator.duplicateGroupsByName.get(matchName) ?? {
-    normalizedName: dedupeNameKey(kept.name),
-    keptId: kept.providerId,
-    droppedIds: [],
-  };
-  duplicateGroup.normalizedName = dedupeNameKey(kept.name);
-  duplicateGroup.keptId = kept.providerId;
-  duplicateGroup.droppedIds.push(dropped.providerId);
-  accumulator.duplicateGroupsByName.set(matchName, duplicateGroup);
+  for (const groupedRecord of mergedGroup) {
+    for (const key of dedupeRecordKeys(groupedRecord)) {
+      accumulator.groupsByKey.set(key, mergedGroup);
+    }
+  }
 }
 
 function finalizeDedupeAccumulator(accumulator: DedupeAccumulator): {
   records: SeedStagingRecord[];
   duplicateGroups: QADuplicateGroup[];
 } {
-  const records = [...accumulator.recordsByName.values()].sort((left, right) =>
-    left.name.localeCompare(right.name)
-  );
-  const duplicateGroups = [...accumulator.duplicateGroupsByName.values()].sort((left, right) =>
-    left.normalizedName.localeCompare(right.normalizedName)
-  );
+  const records: SeedStagingRecord[] = [];
+  const duplicateGroups: QADuplicateGroup[] = [];
+  for (const group of accumulator.groups) {
+    const { kept, duplicateGroup } = buildDuplicateGroup(group);
+    records.push(kept);
+    if (duplicateGroup) duplicateGroups.push(duplicateGroup);
+  }
+
+  records.sort((left, right) => left.name.localeCompare(right.name));
+  duplicateGroups.sort((left, right) => left.normalizedName.localeCompare(right.normalizedName));
 
   return { records, duplicateGroups };
 }

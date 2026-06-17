@@ -5,6 +5,39 @@ import path from 'node:path';
 import test from 'node:test';
 import { testExports } from '../pipeline.ts';
 
+function createDedupeRecord(input: {
+  providerId: string;
+  name: string;
+  brandName?: string | null;
+  countryCode?: string | null;
+  barcode?: string | null;
+  servingSizeG?: number | null;
+  imageUrl?: string | null;
+}) {
+  return testExports.createStagingRecord({
+    provider: 'openfoodfacts',
+    providerId: input.providerId,
+    name: input.name,
+    brandName: input.brandName ?? null,
+    countryCode: input.countryCode ?? null,
+    region: 'global',
+    caloriesPer100g: 588,
+    proteinPer100g: 25,
+    carbsPer100g: 20,
+    fatPer100g: 50,
+    servingSizeG: input.servingSizeG ?? null,
+    servingQuantity: null,
+    servingUnit: null,
+    servingDescription: null,
+    servingWeightsG: {},
+    barcode: input.barcode ?? null,
+    imageUrl: input.imageUrl ?? null,
+    license: 'ODbL',
+    sourceUpdatedAt: null,
+    warnings: [],
+  });
+}
+
 test('parseUsdaDirectory extracts household serving weights from portions', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-usda-'));
 
@@ -173,7 +206,7 @@ test('dedupeSeedRecords matches fuzzy name variants and keeps the highest qualit
     testExports.createStagingRecord({
       provider: 'usda_foundation',
       providerId: 'foundation-1',
-      name: 'Salted roasted peanut',
+      name: 'Salted roasted peanut 16 ounce',
       brandName: null,
       countryCode: null,
       region: 'us',
@@ -203,6 +236,97 @@ test('dedupeSeedRecords matches fuzzy name variants and keeps the highest qualit
       normalizedName: 'salted roasted peanut',
       keptId: 'foundation-1',
       droppedIds: ['legacy-1'],
+    },
+  ]);
+});
+
+test('dedupeSeedRecords includes brand and country in fuzzy dedupe criteria', () => {
+  const records = [
+    createDedupeRecord({
+      providerId: 'alpha-us',
+      name: 'Crunchy Peanut Butter',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+    }),
+    createDedupeRecord({
+      providerId: 'other-us',
+      name: 'Peanut Butter, Crunchy',
+      brandName: 'Other Brand',
+      countryCode: 'us',
+    }),
+    createDedupeRecord({
+      providerId: 'alpha-ca',
+      name: 'Peanut Butter, Crunchy',
+      brandName: 'Example Brand',
+      countryCode: 'ca',
+    }),
+  ];
+
+  const { records: deduped, duplicateGroups } = testExports.dedupeSeedRecords(records);
+
+  assert.equal(deduped.length, 3);
+  assert.deepEqual(
+    deduped.map((record) => record.providerId).sort(),
+    ['alpha-ca', 'alpha-us', 'other-us']
+  );
+  assert.deepEqual(duplicateGroups, []);
+});
+
+test('dedupeSeedRecords keeps same-brand products with different package weights distinct', () => {
+  const records = [
+    createDedupeRecord({
+      providerId: 'jar-16',
+      name: 'Peanut Butter 16 oz jar',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+    }),
+    createDedupeRecord({
+      providerId: 'jar-32',
+      name: 'Peanut Butter 32 oz jar',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+    }),
+  ];
+
+  const { records: deduped, duplicateGroups } = testExports.dedupeSeedRecords(records);
+
+  assert.equal(deduped.length, 2);
+  assert.deepEqual(
+    deduped.map((record) => record.providerId).sort(),
+    ['jar-16', 'jar-32']
+  );
+  assert.deepEqual(duplicateGroups, []);
+});
+
+test('dedupeSeedRecords uses barcode as a dedupe key', () => {
+  const records = [
+    createDedupeRecord({
+      providerId: 'barcode-low',
+      name: 'Crunchy Peanut Butter',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+      barcode: '1234567890123',
+    }),
+    createDedupeRecord({
+      providerId: 'barcode-high',
+      name: 'Peanut Butter Crunchy Spread',
+      brandName: 'Example Brand Foods',
+      countryCode: 'ca',
+      barcode: '1234567890123',
+      servingSizeG: 30,
+      imageUrl: 'https://static.openfoodfacts.org/images/products/123/front_en.1.400.jpg',
+    }),
+  ];
+
+  const { records: deduped, duplicateGroups } = testExports.dedupeSeedRecords(records);
+
+  assert.equal(deduped.length, 1);
+  assert.equal(deduped[0].providerId, 'barcode-high');
+  assert.deepEqual(duplicateGroups, [
+    {
+      normalizedName: 'peanut butter crunchy spread',
+      keptId: 'barcode-high',
+      droppedIds: ['barcode-low'],
     },
   ]);
 });
@@ -345,7 +469,7 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
       JSON.stringify({
         code: '1111111111111',
         product_name: 'Peanut Butter',
-        brands: 'Lower Quality Brand',
+        brands: 'Better Brand',
         countries_tags: ['en:united-states'],
         nutriments: {
           'energy-kcal_100g': 588,
@@ -442,7 +566,7 @@ test('buildFoodSeedArtifacts fuzzy dedupes Open Food Facts rows while streaming'
       }),
       JSON.stringify({
         code: '4444444444444',
-        product_name: 'Peanut Butter, Crunchy',
+        product_name: 'Peanut Butter, Crunchy, 16 ounce',
         brands: 'Example Brand',
         countries_tags: ['en:united-states'],
         serving_quantity: '30',
