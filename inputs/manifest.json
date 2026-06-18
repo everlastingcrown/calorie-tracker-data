@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releaseTag": "food-seed-2026-04-30",
+  "releaseTag": "food-seed-2026-06-17",
   "sources": [
     {
       "id": "usda-foundation-2026-04-30",
@@ -57,9 +57,10 @@
       "id": "openfoodfacts-jsonl",
       "provider": "openfoodfacts",
       "title": "Open Food Facts JSONL export",
-      "version": "main",
+      "version": "2026-06-17+s3-version-tOtgZga7slFLMXorQgrfzYPUSz.7VmsE",
       "enabled": true,
       "outputDir": "openfoodfacts",
+      "notes": "Pinned from the official daily JSONL export. The source URL includes the S3 object version id observed via the Open Food Facts static export redirect; Last-Modified was Wed, 17 Jun 2026 06:17:54 GMT.",
       "license": {
         "name": "Open Database License (ODbL) 1.0; Database Contents License (DbCL) 1.0",
         "url": "https://opendatacommons.org/licenses/odbl/1-0/",
@@ -69,8 +70,8 @@
       "files": [
         {
           "id": "products-jsonl-gz",
-          "url": "https://huggingface.co/datasets/openfoodfacts/openfoodfacts-jsonl-export/resolve/main/openfoodfacts-products.jsonl.gz",
-          "sha256": "f9d8a7eafec73d0b97be6fa44e988efce77b9510a462061f1f344691bec5e6e8",
+          "url": "https://openfoodfacts-ds.s3.eu-west-3.amazonaws.com/openfoodfacts-products.jsonl.gz?versionId=tOtgZga7slFLMXorQgrfzYPUSz.7VmsE",
+          "sha256": "29d9dbd6c8137b33091222cbef1d6c1d07b163cbb4e1119c82809a97f79669c4",
           "fileName": "openfoodfacts-products.jsonl.gz"
         }
       ]
