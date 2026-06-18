@@ -28,7 +28,10 @@ For the currently enabled sources, the verified license pages are:
 
 - USDA FoodData Central: https://fdc.nal.usda.gov/
 - Food Standards Australia New Zealand copyright: https://www.foodstandards.gov.au/legal-policies/copyright
+- Open Food Facts data exports: https://world.openfoodfacts.org/data
 - Open Food Facts API documentation: https://openfoodfacts.github.io/openfoodfacts-server/api/
+
+When refreshing Open Food Facts, prefer the official `https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz` export. It redirects to S3; use the redirected S3 `versionId` query parameter in `inputs/manifest.json` so the source remains immutable after the daily export advances.
 
 ## CI Limits
 
