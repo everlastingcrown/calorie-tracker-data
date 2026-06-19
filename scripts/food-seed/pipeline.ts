@@ -30,6 +30,7 @@ export interface SeedFood {
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
   barcode: string | null;
+  barcodes: string[];
   source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
   license: string;
   sourceUpdatedAt: string | null;
@@ -53,6 +54,7 @@ export interface SeedStagingRecord {
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
   barcode: string | null;
+  barcodes: string[];
   imageUrl: string | null;
   license: string;
   sourceUpdatedAt: string | null;
@@ -495,6 +497,29 @@ function normalizeBarcodeKey(value: string | null): string {
   return value?.replace(/[^a-zA-Z0-9]+/g, '').toLowerCase() ?? '';
 }
 
+function normalizeBarcodeValue(value: string | null): string | null {
+  const normalized = value?.replace(/[^a-zA-Z0-9]+/g, '') ?? '';
+  return normalized || null;
+}
+
+function uniqueBarcodes(values: (string | null)[]): string[] {
+  const seen = new Set<string>();
+  const barcodes: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeBarcodeValue(value);
+    if (!normalized) continue;
+    const key = normalizeBarcodeKey(normalized);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    barcodes.push(normalized);
+  }
+  return barcodes;
+}
+
+function recordBarcodes(record: SeedStagingRecord): string[] {
+  return uniqueBarcodes([...record.barcodes, record.barcode]);
+}
+
 function dedupeIdentityKey(record: SeedStagingRecord): string {
   return [
     `name:${dedupeMatchKey(record.name)}`,
@@ -509,7 +534,7 @@ function dedupeRecordKeys(record: SeedStagingRecord): string[] {
   return barcodeKey ? [`barcode:${barcodeKey}`, dedupeIdentityKey(record)] : [dedupeIdentityKey(record)];
 }
 
-function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'>): number {
+function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore' | 'barcodes'>): number {
   let score = 0;
   if (record.caloriesPer100g != null) score += 3;
   if (record.proteinPer100g != null && record.carbsPer100g != null && record.fatPer100g != null) {
@@ -533,11 +558,16 @@ function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'>): num
 }
 
 function createStagingRecord(
-  input: Omit<SeedStagingRecord, 'qualityScore'> & { warnings?: string[] }
+  input: Omit<SeedStagingRecord, 'qualityScore' | 'barcodes'> & {
+    barcodes?: string[];
+    warnings?: string[];
+  }
 ): SeedStagingRecord {
   const warnings = input.warnings ?? [];
+  const barcodes = uniqueBarcodes([...(input.barcodes ?? []), input.barcode]);
   return {
     ...input,
+    barcodes,
     warnings,
     qualityScore: buildQualityScore({ ...input, warnings }),
   };
@@ -567,6 +597,7 @@ function buildSeedFood(record: SeedStagingRecord, generatedAt: string): SeedFood
     servingDescription: record.servingDescription,
     servingWeightsG: record.servingWeightsG,
     barcode: record.barcode,
+    barcodes: recordBarcodes(record),
     source,
     license: record.license,
     sourceUpdatedAt: record.sourceUpdatedAt,
@@ -612,16 +643,22 @@ function buildDuplicateGroup(group: SeedStagingRecord[]): {
 } {
   group.sort(compareRecords);
   const kept = group[0];
+  const barcodes = uniqueBarcodes(group.flatMap((record) => recordBarcodes(record)));
+  const keptWithBarcodes = {
+    ...kept,
+    barcode: kept.barcode ?? barcodes[0] ?? null,
+    barcodes,
+  };
   const duplicateGroup =
     group.length > 1
       ? {
-          normalizedName: dedupeNameKey(kept.name),
-          keptId: kept.providerId,
+          normalizedName: dedupeNameKey(keptWithBarcodes.name),
+          keptId: keptWithBarcodes.providerId,
           droppedIds: group.slice(1).map((record) => record.providerId),
         }
       : null;
 
-  return { kept, duplicateGroup };
+  return { kept: keptWithBarcodes, duplicateGroup };
 }
 
 function createDedupeAccumulator(): DedupeAccumulator {

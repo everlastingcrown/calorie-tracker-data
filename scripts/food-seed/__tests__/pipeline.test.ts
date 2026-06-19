@@ -176,6 +176,7 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   assert.equal(food.source, 'openfoodfacts');
   assert.equal(food.brandName, 'Example Brand');
   assert.equal(food.countryCode, 'us');
+  assert.deepEqual(food.barcodes, ['1234567890123']);
   assert.equal(food.license, 'ODbL');
 });
 
@@ -322,6 +323,8 @@ test('dedupeSeedRecords uses barcode as a dedupe key', () => {
 
   assert.equal(deduped.length, 1);
   assert.equal(deduped[0].providerId, 'barcode-high');
+  assert.equal(deduped[0].barcode, '1234567890123');
+  assert.deepEqual(deduped[0].barcodes, ['1234567890123']);
   assert.deepEqual(duplicateGroups, [
     {
       normalizedName: 'peanut butter crunchy spread',
@@ -510,6 +513,8 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
   assert.equal(summary.duplicateCount, 1);
   assert.equal(brandedFoods.length, 1);
   assert.equal(brandedFoods[0].id, 'off-2222222222222');
+  assert.equal(brandedFoods[0].barcode, '2222222222222');
+  assert.deepEqual(brandedFoods[0].barcodes, ['2222222222222', '1111111111111']);
   assert.equal(qaReport.counts.stagingRecords, 3);
   assert.deepEqual(qaReport.duplicateGroups, [
     {
@@ -596,6 +601,8 @@ test('buildFoodSeedArtifacts fuzzy dedupes Open Food Facts rows while streaming'
   assert.equal(summary.duplicateCount, 1);
   assert.equal(brandedFoods.length, 1);
   assert.equal(brandedFoods[0].id, 'off-4444444444444');
+  assert.equal(brandedFoods[0].barcode, '4444444444444');
+  assert.deepEqual(brandedFoods[0].barcodes, ['4444444444444', '3333333333333']);
   assert.deepEqual(qaReport.duplicateGroups, [
     {
       normalizedName: 'peanut butter crunchy',
