@@ -120,6 +120,48 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseQuantityAndUnit recognizes additional discrete serving descriptors', () => {
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 slice (28 g)'), {
+    quantity: 1,
+    unit: 'slice',
+  });
+  assert.deepEqual(testExports.parseQuantityAndUnit('2 pieces'), { quantity: 2, unit: 'piece' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 bar'), { quantity: 1, unit: 'bar' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('3 cookies'), { quantity: 3, unit: 'cookie' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 can drained'), { quantity: 1, unit: 'can' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 bottle'), { quantity: 1, unit: 'bottle' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 packet'), { quantity: 1, unit: 'packet' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('2 servings'), { quantity: 2, unit: 'serving' });
+});
+
+test('parseQuantityAndUnit recognizes metric volume descriptors', () => {
+  assert.deepEqual(testExports.parseQuantityAndUnit('250 ml'), { quantity: 250, unit: 'ml' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('100 mL'), { quantity: 100, unit: 'ml' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 L'), { quantity: 1, unit: 'l' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('0.5 litres'), { quantity: 0.5, unit: 'l' });
+});
+
+test('parseQuantityAndUnit keeps weight ounces distinct from fluid ounces', () => {
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 oz'), { quantity: 1, unit: 'oz' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('2 ounces'), { quantity: 2, unit: 'oz' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('8 fl oz'), { quantity: 8, unit: 'fl_oz' });
+});
+
+test('parseQuantityAndUnit recognizes size descriptors', () => {
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 small apple'), {
+    quantity: 1,
+    unit: 'small',
+  });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 medium banana'), {
+    quantity: 1,
+    unit: 'medium',
+  });
+  assert.deepEqual(testExports.parseQuantityAndUnit('2 large eggs'), {
+    quantity: 2,
+    unit: 'large',
+  });
+});
+
 test('parseAfcdDirectory extracts serving measures from food details', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
 
