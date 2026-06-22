@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import * as XLSXModule from 'xlsx';
 import { testExports } from '../pipeline.ts';
+
+type XlsxModule = typeof import('xlsx');
+const XLSX = ((XLSXModule as XlsxModule & { default?: XlsxModule }).default ??
+  XLSXModule) as XlsxModule;
 
 function createDedupeRecord(input: {
   providerId: string;
@@ -111,6 +116,62 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   assert.equal(record.servingUnit, 'tbsp');
   assert.equal(record.servingDescription, '2 tbsp (30 g)');
   assert.deepEqual(record.servingWeightsG, { tbsp: 15 });
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseAfcdDirectory extracts serving measures from food details', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
+
+  const detailsWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    detailsWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Food details'],
+      ['Survey ID', 'Food', 'Gram amount', 'Measure'],
+      ['AUS001', 'Chicken soup', 40, '2 tbsp cooked'],
+      ['AUS002', 'Plain tea', '', '1 cup prepared'],
+    ]),
+    'Food Details'
+  );
+  XLSX.writeFile(detailsWorkbook, path.join(dir, 'AFCD Release 3 - Food Details.xlsx'));
+
+  const nutrientWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    nutrientWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Nutrient profiles'],
+      [
+        'Survey ID',
+        'Energy with dietary fibre, equated (kJ)',
+        'Protein',
+        'Carbohydrate',
+        'Total fat',
+      ],
+      ['AUS001', 400, 10, 12, 4],
+      ['AUS002', 10, 0, 0, 0],
+    ]),
+    'Nutrient Profiles'
+  );
+  XLSX.writeFile(nutrientWorkbook, path.join(dir, 'AFCD Release 3 - Nutrient profiles.xlsx'));
+
+  const [source] = await testExports.parseAfcdDirectory(dir);
+  const [withServing, withoutServing] = source.stagingRecords;
+
+  assert.equal(withServing.provider, 'afcd');
+  assert.equal(withServing.servingSizeG, 40);
+  assert.equal(withServing.servingQuantity, 2);
+  assert.equal(withServing.servingUnit, 'tbsp');
+  assert.equal(withServing.servingDescription, '2 tbsp cooked');
+  assert.deepEqual(withServing.servingWeightsG, { tbsp: 20 });
+
+  assert.equal(withoutServing.servingSizeG, null);
+  assert.equal(withoutServing.servingQuantity, null);
+  assert.equal(withoutServing.servingUnit, null);
+  assert.equal(withoutServing.servingDescription, null);
+  assert.deepEqual(withoutServing.servingWeightsG, {});
 
   await rm(dir, { recursive: true, force: true });
 });

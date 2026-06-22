@@ -1151,6 +1151,17 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       carbs: null,
       fat: null,
     };
+    const gramWeight = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.gramWeight));
+    const measureDescription = String(
+      valueForHeader(row, FSANZ_HEADER_MATCHERS.measureDescription) ?? ''
+    ).trim();
+    const parsedMeasure = parseQuantityAndUnit(measureDescription);
+    const serving = createServingMeasure({
+      grams: gramWeight,
+      quantity: parsedMeasure?.quantity ?? null,
+      unit: parsedMeasure?.unit ?? null,
+      description: measureDescription || null,
+    });
 
     const record = createStagingRecord({
       provider: 'afcd',
@@ -1163,11 +1174,11 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       proteinPer100g: nutrients.protein,
       carbsPer100g: nutrients.carbs,
       fatPer100g: nutrients.fat,
-      servingSizeG: null,
-      servingQuantity: null,
-      servingUnit: null,
-      servingDescription: null,
-      servingWeightsG: {},
+      servingSizeG: serving?.grams ?? null,
+      servingQuantity: serving?.quantity ?? null,
+      servingUnit: serving?.unit ?? null,
+      servingDescription: serving?.description ?? null,
+      servingWeightsG: serving?.weightsG ?? {},
       barcode: null,
       imageUrl: null,
       license: 'CC BY 4.0',
