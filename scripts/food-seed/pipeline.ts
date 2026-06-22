@@ -169,7 +169,26 @@ const FSANZ_HEADER_MATCHERS = {
   measureDescription: [/^measure/i, /^portion/i, /^descriptor/i, /^quantity$/i, /^description$/i],
 } as const;
 
-const COMMON_SERVING_UNITS = ['cup', 'tbsp', 'tsp', 'fl_oz'] as const;
+const COMMON_SERVING_UNITS = [
+  'cup',
+  'tbsp',
+  'tsp',
+  'fl_oz',
+  'ml',
+  'l',
+  'oz',
+  'slice',
+  'piece',
+  'bar',
+  'cookie',
+  'can',
+  'bottle',
+  'packet',
+  'serving',
+  'small',
+  'medium',
+  'large',
+] as const;
 
 const OFF_COUNTRY_CODES_BY_TAG: Record<string, string> = {
   australia: 'au',
@@ -266,6 +285,20 @@ function normalizeServingUnit(value: string | null | undefined): string | null {
   if (/\b(fluid ounce|fluid ounces|fl oz|fl ounce|fl ounces|floz)\b/.test(normalized)) {
     return 'fl_oz';
   }
+  if (/\b(milliliter|milliliters|millilitre|millilitres|ml)\b/.test(normalized)) return 'ml';
+  if (/\b(liter|liters|litre|litres|l)\b/.test(normalized)) return 'l';
+  if (/\b(ounce|ounces|oz)\b/.test(normalized)) return 'oz';
+  if (/\b(slice|slices)\b/.test(normalized)) return 'slice';
+  if (/\b(piece|pieces)\b/.test(normalized)) return 'piece';
+  if (/\b(bar|bars)\b/.test(normalized)) return 'bar';
+  if (/\b(cookie|cookies)\b/.test(normalized)) return 'cookie';
+  if (/\b(can|cans)\b/.test(normalized)) return 'can';
+  if (/\b(bottle|bottles)\b/.test(normalized)) return 'bottle';
+  if (/\b(packet|packets|package|packages|pkg|pkgs)\b/.test(normalized)) return 'packet';
+  if (/\b(serving|servings)\b/.test(normalized)) return 'serving';
+  if (/\bsmall\b/.test(normalized)) return 'small';
+  if (/\bmedium\b/.test(normalized)) return 'medium';
+  if (/\blarge\b/.test(normalized)) return 'large';
 
   return null;
 }
@@ -276,7 +309,7 @@ function parseQuantityAndUnit(value: string | null | undefined): {
 } | null {
   if (!value) return null;
   const pattern =
-    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz)\b/i;
+    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz|milliliters?|millilitres?|ml|liters?|litres?|l|ounces?|oz|slices?|pieces?|bars?|cookies?|cans?|bottles?|packets?|packages?|pkgs?|servings?|small|medium|large)\b/i;
   const matched = value.match(pattern);
   if (!matched) return null;
 
