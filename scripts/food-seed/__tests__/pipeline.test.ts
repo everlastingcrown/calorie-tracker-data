@@ -218,6 +218,52 @@ test('parseAfcdDirectory extracts serving measures from food details', async () 
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseAfcdDirectory selects nutrient profile sheet by expected columns', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
+
+  const detailsSheet = XLSX.utils.aoa_to_sheet([
+    ['AFCD Release 3'],
+    ['Food details'],
+    ['Public Food Key', 'Food Name', 'Food Description', 'Gram amount', 'Measure'],
+    ['AUS001', 'Chicken soup', 'Soup with chicken', 40, '2 tbsp cooked'],
+  ]);
+
+  const detailsWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(detailsWorkbook, detailsSheet, 'Food Details');
+  XLSX.writeFile(detailsWorkbook, path.join(dir, 'AFCD Release 3 - Food Details.xlsx'));
+
+  const nutrientWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(nutrientWorkbook, detailsSheet, 'Food Details');
+  XLSX.utils.book_append_sheet(
+    nutrientWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Nutrient profiles'],
+      [
+        'Public Food Key',
+        'Energy with dietary fibre, equated (kJ)',
+        'Protein',
+        'Carbohydrate',
+        'Total fat',
+      ],
+      ['AUS001', 400, 10, 12, 4],
+    ]),
+    'Nutrient Profiles'
+  );
+  XLSX.writeFile(nutrientWorkbook, path.join(dir, 'AFCD Release 3 - Nutrient profiles.xlsx'));
+
+  const [source] = await testExports.parseAfcdDirectory(dir);
+  const [record] = source.stagingRecords;
+
+  assert.equal(record.providerId, 'AUS001');
+  assert.equal(record.caloriesPer100g, 95.6);
+  assert.equal(record.proteinPer100g, 10);
+  assert.equal(record.carbsPer100g, 12);
+  assert.equal(record.fatPer100g, 4);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
