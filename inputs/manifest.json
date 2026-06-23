@@ -50,6 +50,12 @@
           "url": "https://www.foodstandards.gov.au/sites/default/files/2025-12/AFCD%20Release%203%20-%20Nutrient%20profiles.xlsx",
           "sha256": "14cb3e73dbf58987b440e6299624c0fefd7a4e61591fc1f753995d9534e0efc9",
           "fileName": "nutrient profiles.xlsx"
+        },
+        {
+          "id": "ausnut-food-measures",
+          "url": "https://www.foodstandards.gov.au/sites/default/files/2025-08/AUSNUT%202023%20-%20Food%20measures.xlsx?v=20250903",
+          "sha256": "58bee1204610efb72bb831dc7fb65acc23db540b51d056f83c6ac0ce84590475",
+          "fileName": "ausnut food measures.xlsx"
         }
       ]
     },

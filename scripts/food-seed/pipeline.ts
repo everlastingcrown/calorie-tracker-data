@@ -160,6 +160,7 @@ const FSANZ_HEADER_MATCHERS = {
     /^survey[_\s-]*food[_\s-]*id$/i,
     /^public[_\s-]*food[_\s-]*key$/i,
   ],
+  publicFoodKey: [/^public[_\s-]*food[_\s-]*key$/i],
   foodName: [/^food$/i, /^food[_\s-]*name$/i, /^food[_\s-]*description$/i],
   energyKj: [/^energy.*dietary fibre.*kj/i, /^energy.*kj/i, /^kj$/i],
   protein: [/^protein/i],
@@ -167,6 +168,11 @@ const FSANZ_HEADER_MATCHERS = {
   fat: [/^fat[, ]*total/i, /^total fat/i],
   gramWeight: [/^gram[_\s-]*amount$/i, /^gram[_\s-]*weight$/i, /^weight.*g/i],
   measureDescription: [/^measure/i, /^portion/i, /^descriptor/i, /^quantity$/i, /^description$/i],
+  quantity: [/^quantity$/i],
+  descriptor1: [/^descriptor\s*1$/i],
+  descriptor2: [/^descriptor\s*2$/i],
+  descriptor3: [/^descriptor\s*3$/i],
+  descriptor4: [/^descriptor\s*4$/i],
 } as const;
 
 const COMMON_SERVING_UNITS = [
@@ -185,6 +191,7 @@ const COMMON_SERVING_UNITS = [
   'bottle',
   'packet',
   'serving',
+  'serve',
   'small',
   'medium',
   'large',
@@ -295,7 +302,7 @@ function normalizeServingUnit(value: string | null | undefined): string | null {
   if (/\b(can|cans)\b/.test(normalized)) return 'can';
   if (/\b(bottle|bottles)\b/.test(normalized)) return 'bottle';
   if (/\b(packet|packets|package|packages|pkg|pkgs)\b/.test(normalized)) return 'packet';
-  if (/\b(serving|servings)\b/.test(normalized)) return 'serving';
+  if (/\b(serve|serves|serving|servings)\b/.test(normalized)) return 'serving';
   if (/\bsmall\b/.test(normalized)) return 'small';
   if (/\bmedium\b/.test(normalized)) return 'medium';
   if (/\blarge\b/.test(normalized)) return 'large';
@@ -309,7 +316,7 @@ function parseQuantityAndUnit(value: string | null | undefined): {
 } | null {
   if (!value) return null;
   const pattern =
-    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz|milliliters?|millilitres?|ml|liters?|litres?|l|ounces?|oz|slices?|pieces?|bars?|cookies?|cans?|bottles?|packets?|packages?|pkgs?|servings?|small|medium|large)\b/i;
+    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz|milliliters?|millilitres?|ml|liters?|litres?|l|ounces?|oz|slices?|pieces?|bars?|cookies?|cans?|bottles?|packets?|packages?|pkgs?|serves?|servings?|small|medium|large)\b/i;
   const matched = value.match(pattern);
   if (!matched) return null;
 
@@ -1134,6 +1141,14 @@ function findWorkbook(files: string[], matchers: readonly RegExp[], description:
   return matched;
 }
 
+function findOptionalWorkbook(files: string[], matchers: readonly RegExp[]): string | null {
+  return (
+    files.find((filePath) =>
+      matchers.some((matcher) => matcher.test(path.basename(filePath).toLowerCase()))
+    ) ?? null
+  );
+}
+
 interface WorkbookRowsOptions {
   sheetNameMatchers?: readonly RegExp[];
   requiredHeaders?: readonly (readonly RegExp[])[];
@@ -1196,6 +1211,61 @@ function readWorkbookRows(
   );
 }
 
+function parseAfcdServingFromRow(row: Record<string, unknown>): ServingMeasure | null {
+  const gramWeight = parseNumber(optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.gramWeight));
+  const quantity = parseMixedNumber(
+    String(optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.quantity) ?? '')
+  );
+  const primaryDescriptor =
+    optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.descriptor1) ??
+    optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.measureDescription);
+  const descriptors = [
+    primaryDescriptor,
+    optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.descriptor2),
+    optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.descriptor3),
+    optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.descriptor4),
+  ]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean);
+  const description = [quantity, ...descriptors]
+    .filter((value) => value != null && String(value).trim() !== '')
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (descriptors.some((descriptor) => /^density$/i.test(descriptor))) return null;
+
+  const parsedMeasure = parseQuantityAndUnit(description);
+  return createServingMeasure({
+    grams: gramWeight,
+    quantity: parsedMeasure?.quantity ?? quantity,
+    unit: parsedMeasure?.unit ?? normalizeServingUnit(description),
+    description: description || null,
+  });
+}
+
+function parseAfcdServingsByFood(measureRows: Record<string, unknown>[]): Map<string, ServingMeasure[]> {
+  const servingsByFood = new Map<string, ServingMeasure[]>();
+
+  for (const row of measureRows) {
+    const providerId = String(
+      optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.publicFoodKey) ??
+        valueForHeader(row, FSANZ_HEADER_MATCHERS.foodId) ??
+        ''
+    ).trim();
+    if (!providerId) continue;
+
+    const serving = parseAfcdServingFromRow(row);
+    if (!serving) continue;
+
+    const servings = servingsByFood.get(providerId) ?? [];
+    servings.push(serving);
+    servingsByFood.set(providerId, servings);
+  }
+
+  return servingsByFood;
+}
+
 async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
   const files = await listWorkbookFiles(afcdDir);
   const detailsPath = findWorkbook(files, [/food details/i], 'AFCD food details');
@@ -1204,6 +1274,7 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
     [/nutrient profiles/i, /nutrient file/i],
     'AFCD nutrient profiles'
   );
+  const measuresPath = findOptionalWorkbook(files, [/food measures/i]);
 
   const detailsRows = readWorkbookRows(detailsPath, {
     sheetNameMatchers: [/food details/i],
@@ -1221,6 +1292,18 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
     ],
     description: 'AFCD nutrient profiles',
   });
+  const measureRows = measuresPath
+    ? readWorkbookRows(measuresPath, {
+        sheetNameMatchers: [/ausnut/i, /food measures/i],
+        requiredHeaders: [
+          FSANZ_HEADER_MATCHERS.foodId,
+          FSANZ_HEADER_MATCHERS.gramWeight,
+          FSANZ_HEADER_MATCHERS.measureDescription,
+        ],
+        description: 'AUSNUT food measures',
+      })
+    : [];
+  const servingsByFood = parseAfcdServingsByFood(measureRows);
 
   const nutrientsByFood = new Map<
     string,
@@ -1247,7 +1330,7 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
     provider: 'afcd',
     releaseDate: '2025-12-23',
     license: 'CC BY 4.0',
-    inputFiles: [detailsPath, nutrientsPath],
+    inputFiles: measuresPath ? [detailsPath, nutrientsPath, measuresPath] : [detailsPath, nutrientsPath],
     stagingRecords: [],
     rejectedRows: [],
   };
@@ -1263,17 +1346,10 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       carbs: null,
       fat: null,
     };
-    const gramWeight = parseNumber(optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.gramWeight));
-    const measureDescription = String(
-      optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.measureDescription) ?? ''
-    ).trim();
-    const parsedMeasure = parseQuantityAndUnit(measureDescription);
-    const serving = createServingMeasure({
-      grams: gramWeight,
-      quantity: parsedMeasure?.quantity ?? null,
-      unit: parsedMeasure?.unit ?? null,
-      description: measureDescription || null,
-    });
+    const serving = chooseBestServing([
+      parseAfcdServingFromRow(row),
+      ...(servingsByFood.get(providerId) ?? []),
+    ].filter((value): value is ServingMeasure => value != null));
 
     const record = createStagingRecord({
       provider: 'afcd',

@@ -324,6 +324,86 @@ test('parseAfcdDirectory allows missing optional serving columns in AFCD details
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseAfcdDirectory joins AUSNUT food measures and skips density rows', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
+
+  const detailsWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    detailsWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Food details'],
+      ['Public Food Key', 'Food Name'],
+      ['F000996', 'Beer, high alcohol'],
+    ]),
+    'Food details'
+  );
+  XLSX.writeFile(detailsWorkbook, path.join(dir, 'AFCD Release 3 - Food Details.xlsx'));
+
+  const nutrientWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    nutrientWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Nutrient profiles'],
+      [
+        'Public Food Key',
+        'Energy with dietary fibre, equated (kJ)',
+        'Protein',
+        'Carbohydrate',
+        'Total fat',
+      ],
+      ['F000996', 400, 10, 12, 4],
+    ]),
+    'All solids & liquids per 100 g'
+  );
+  XLSX.writeFile(nutrientWorkbook, path.join(dir, 'AFCD Release 3 - Nutrient profiles.xlsx'));
+
+  const measuresWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    measuresWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AUSNUT 2023 - Food measures'],
+      [],
+      [
+        'Survey ID',
+        'Public food key',
+        'Food name',
+        'Measure ID',
+        'Quantity',
+        'Descriptor 1',
+        'Descriptor 2',
+        'Descriptor 3',
+        'Descriptor 4',
+        'Gram amount',
+        'Volume',
+      ],
+      [29101001, 'F000996', 'Beer, high alcohol', 40297, 1, 'density', '', '', '', 1.009, 1],
+      [29101001, 'F000996', 'Beer, high alcohol', 40298, 1, 'can', '', '', '', 332.97, 330],
+      [29101001, 'F000996', 'Beer, high alcohol', 40299, 1, 'bottle', '', '', '', 378.38, 375],
+    ]),
+    'AUSNUT 2023'
+  );
+  XLSX.writeFile(measuresWorkbook, path.join(dir, 'AUSNUT 2023 - Food measures.xlsx'));
+
+  const [source] = await testExports.parseAfcdDirectory(dir);
+  const [record] = source.stagingRecords;
+
+  assert.deepEqual(source.inputFiles.map((file) => path.basename(file)), [
+    'AFCD Release 3 - Food Details.xlsx',
+    'AFCD Release 3 - Nutrient profiles.xlsx',
+    'AUSNUT 2023 - Food measures.xlsx',
+  ]);
+  assert.equal(record.providerId, 'F000996');
+  assert.equal(record.servingSizeG, 332.97);
+  assert.equal(record.servingQuantity, 1);
+  assert.equal(record.servingUnit, 'can');
+  assert.equal(record.servingDescription, '1 can');
+  assert.deepEqual(record.servingWeightsG, { can: 332.97, bottle: 378.38 });
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
