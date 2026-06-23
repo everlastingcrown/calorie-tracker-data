@@ -1119,16 +1119,66 @@ function findWorkbook(files: string[], matchers: readonly RegExp[], description:
   return matched;
 }
 
-function readWorkbookRows(workbookPath: string): Record<string, unknown>[] {
-  const workbook = XLSX.readFile(workbookPath, { cellDates: false });
-  const sheetName =
-    workbook.SheetNames.find((name) => !/contents/i.test(name)) ?? workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-    range: 2,
-    defval: '',
-    raw: true,
+interface WorkbookRowsOptions {
+  sheetNameMatchers?: readonly RegExp[];
+  requiredHeaders?: readonly (readonly RegExp[])[];
+  description?: string;
+}
+
+function rowHasHeader(row: Record<string, unknown>, matchers: readonly RegExp[]): boolean {
+  return Object.keys(row).some((key) => {
+    const normalized = key.trim().toLowerCase().replace(/\s+/g, ' ');
+    return matchers.some((matcher) => matcher.test(normalized));
   });
+}
+
+function rowHasRequiredHeaders(
+  row: Record<string, unknown>,
+  requiredHeaders: readonly (readonly RegExp[])[]
+): boolean {
+  return requiredHeaders.every((matchers) => rowHasHeader(row, matchers));
+}
+
+function readWorkbookRows(
+  workbookPath: string,
+  options: WorkbookRowsOptions = {}
+): Record<string, unknown>[] {
+  const workbook = XLSX.readFile(workbookPath, { cellDates: false });
+  const nonContentsSheetNames = workbook.SheetNames.filter((name) => !/contents/i.test(name));
+  const sheetNames = nonContentsSheetNames.length > 0 ? nonContentsSheetNames : workbook.SheetNames;
+  const preferredSheetNames = options.sheetNameMatchers
+    ? [
+        ...sheetNames.filter((name) =>
+          options.sheetNameMatchers?.some((matcher) => matcher.test(name.toLowerCase()))
+        ),
+        ...sheetNames.filter(
+          (name) =>
+            !options.sheetNameMatchers?.some((matcher) => matcher.test(name.toLowerCase()))
+        ),
+      ]
+    : sheetNames;
+
+  for (const sheetName of preferredSheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      range: 2,
+      defval: '',
+      raw: true,
+    });
+    if (
+      !options.requiredHeaders ||
+      rows.some((row) => rowHasRequiredHeaders(row, options.requiredHeaders ?? []))
+    ) {
+      return rows;
+    }
+  }
+
+  const description = options.description ?? 'workbook';
+  throw new Error(
+    `Could not find ${description} sheet with expected columns in ${path.basename(
+      workbookPath
+    )}. Available sheets: ${workbook.SheetNames.join(', ')}`
+  );
 }
 
 async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
@@ -1140,8 +1190,22 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
     'AFCD nutrient profiles'
   );
 
-  const detailsRows = readWorkbookRows(detailsPath);
-  const nutrientRows = readWorkbookRows(nutrientsPath);
+  const detailsRows = readWorkbookRows(detailsPath, {
+    sheetNameMatchers: [/food details/i],
+    requiredHeaders: [FSANZ_HEADER_MATCHERS.foodId, FSANZ_HEADER_MATCHERS.foodName],
+    description: 'AFCD food details',
+  });
+  const nutrientRows = readWorkbookRows(nutrientsPath, {
+    sheetNameMatchers: [/nutrient profiles/i, /nutrient file/i],
+    requiredHeaders: [
+      FSANZ_HEADER_MATCHERS.foodId,
+      FSANZ_HEADER_MATCHERS.energyKj,
+      FSANZ_HEADER_MATCHERS.protein,
+      FSANZ_HEADER_MATCHERS.carbs,
+      FSANZ_HEADER_MATCHERS.fat,
+    ],
+    description: 'AFCD nutrient profiles',
+  });
 
   const nutrientsByFood = new Map<
     string,
