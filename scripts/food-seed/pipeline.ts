@@ -1100,6 +1100,21 @@ function valueForHeader<T extends Record<string, unknown>>(
   return undefined;
 }
 
+function optionalValueForHeader<T extends Record<string, unknown>>(
+  row: T,
+  matchers: readonly RegExp[]
+): string | number | undefined {
+  const keys = Object.keys(row);
+  const key = keys.find((candidate) => {
+    const normalized = candidate.trim().toLowerCase().replace(/\s+/g, ' ');
+    return matchers.some((matcher) => matcher.test(normalized));
+  });
+  if (!key) return undefined;
+  const value = row[key];
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  return undefined;
+}
+
 function listWorkbookFiles(dirPath: string): Promise<string[]> {
   return fs.readdir(dirPath).then((entries) =>
     entries
@@ -1248,9 +1263,9 @@ async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[]> {
       carbs: null,
       fat: null,
     };
-    const gramWeight = parseNumber(valueForHeader(row, FSANZ_HEADER_MATCHERS.gramWeight));
+    const gramWeight = parseNumber(optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.gramWeight));
     const measureDescription = String(
-      valueForHeader(row, FSANZ_HEADER_MATCHERS.measureDescription) ?? ''
+      optionalValueForHeader(row, FSANZ_HEADER_MATCHERS.measureDescription) ?? ''
     ).trim();
     const parsedMeasure = parseQuantityAndUnit(measureDescription);
     const serving = createServingMeasure({

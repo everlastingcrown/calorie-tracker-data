@@ -264,6 +264,66 @@ test('parseAfcdDirectory selects nutrient profile sheet by expected columns', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseAfcdDirectory allows missing optional serving columns in AFCD details', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
+
+  const detailsWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    detailsWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Food details'],
+      [
+        'Public Food Key',
+        'Classification',
+        'Derivation',
+        'Food Name',
+        'Food Description',
+        'Sampling Details',
+        'Nitrogen Factor',
+        'Fat Factor',
+        'Specific Gravity',
+        'Analysed Portion',
+        'Unanalysed Portion',
+      ],
+      ['AUS001', '', '', 'Chicken soup', 'Soup with chicken', '', '', '', '', '100%', '0%'],
+    ]),
+    'Food details'
+  );
+  XLSX.writeFile(detailsWorkbook, path.join(dir, 'AFCD Release 3 - Food Details.xlsx'));
+
+  const nutrientWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    nutrientWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Nutrient profiles'],
+      [
+        'Public Food Key',
+        'Energy with dietary fibre, equated (kJ)',
+        'Protein',
+        'Carbohydrate',
+        'Total fat',
+      ],
+      ['AUS001', 400, 10, 12, 4],
+    ]),
+    'All solids & liquids per 100 g'
+  );
+  XLSX.writeFile(nutrientWorkbook, path.join(dir, 'AFCD Release 3 - Nutrient profiles.xlsx'));
+
+  const [source] = await testExports.parseAfcdDirectory(dir);
+  const [record] = source.stagingRecords;
+
+  assert.equal(record.providerId, 'AUS001');
+  assert.equal(record.servingSizeG, null);
+  assert.equal(record.servingQuantity, null);
+  assert.equal(record.servingUnit, null);
+  assert.equal(record.servingDescription, null);
+  assert.deepEqual(record.servingWeightsG, {});
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
