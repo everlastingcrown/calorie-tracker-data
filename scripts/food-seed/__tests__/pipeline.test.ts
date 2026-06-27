@@ -479,6 +479,78 @@ test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory accepts additional Open Food Facts energy fallbacks', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  const products = [
+    {
+      code: '3000000000001',
+      product_name: 'Kcal Value Product',
+      nutriments: { 'energy-kcal_value': 321 },
+      expectedCalories: 321,
+    },
+    {
+      code: '3000000000002',
+      product_name: 'Kilojoule Product',
+      nutriments: { 'energy-kj': 1000 },
+      expectedCalories: 239.01,
+    },
+    {
+      code: '3000000000003',
+      product_name: 'Plain Energy Product',
+      nutriments: { energy: 1000 },
+      expectedCalories: 239.01,
+    },
+    {
+      code: '3000000000004',
+      product_name: 'Energy Value Product',
+      nutriments: { energy_value: 1000 },
+      expectedCalories: 239.01,
+    },
+    {
+      code: '3000000000005',
+      product_name: 'Kilojoule Value Product',
+      nutriments: { 'energy-kj_value': 1000 },
+      expectedCalories: 239.01,
+    },
+    {
+      code: '3000000000006',
+      product_name: 'Preferred Normalized Kcal Product',
+      nutriments: { 'energy-kcal_100g': 111, 'energy-kcal_value': 999 },
+      expectedCalories: 111,
+    },
+  ];
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    products
+      .map(({ code, product_name, nutriments }) =>
+        JSON.stringify({
+          code,
+          product_name,
+          nutriments: {
+            ...nutriments,
+            proteins_100g: 5,
+            carbohydrates_100g: 10,
+            fat_100g: 2,
+          },
+        })
+      )
+      .join('\n') + '\n'
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const caloriesByCode = new Map(
+    source.stagingRecords.map((record) => [record.providerId, record.caloriesPer100g])
+  );
+
+  assert.equal(source.rejectedRows.length, 0);
+  for (const product of products) {
+    assert.equal(caloriesByCode.get(product.code), product.expectedCalories);
+  }
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   const food = testExports.buildSeedFood(
     testExports.createStagingRecord({

@@ -1536,9 +1536,20 @@ async function parseOpenFoodFactsDirectory(
 
       const nutriments = objectValue(product.nutriments);
       const calories =
-        firstNumberValue(nutriments['energy-kcal_100g'], nutriments['energy-kcal']) ??
+        firstNumberValue(
+          nutriments['energy-kcal_100g'],
+          nutriments['energy-kcal'],
+          nutriments['energy-kcal_value']
+        ) ??
         (() => {
-          const energyKj = firstNumberValue(nutriments['energy-kj_100g'], nutriments.energy_100g);
+          const energyKj = firstNumberValue(
+            nutriments['energy-kj_100g'],
+            nutriments.energy_100g,
+            nutriments['energy-kj'],
+            nutriments.energy,
+            nutriments.energy_value,
+            nutriments['energy-kj_value']
+          );
           return energyKj != null ? roundNumber(energyKj * 0.239005736) : null;
         })();
       const serving = parseOpenFoodFactsServing(product);
