@@ -120,6 +120,51 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory accepts Obento udon Open Food Facts energy fields', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '9310432001423',
+      product_name: 'Udon noodles',
+      brands: 'Obento',
+      countries_tags: ['en:australia', 'en:united-states'],
+      serving_quantity: 200,
+      serving_size: '1 serving (200 g)',
+      last_modified_t: 1780786880,
+      nutriments: {
+        'energy-kcal': 138.623326959847,
+        'energy-kcal_100g': 138.623326959847,
+        'energy-kj': 557.1,
+        'energy-kj_100g': 557.1,
+        energy_100g: 557.1,
+        proteins_100g: 3.1,
+        carbohydrates_100g: 28.8,
+        fat_100g: 0.4,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(source.rejectedRows.length, 0);
+  assert.equal(record.providerId, '9310432001423');
+  assert.equal(record.name, 'Udon noodles');
+  assert.equal(record.brandName, 'Obento');
+  assert.equal(record.countryCode, 'au');
+  assert.equal(record.caloriesPer100g, 138.623326959847);
+  assert.equal(record.proteinPer100g, 3.1);
+  assert.equal(record.carbsPer100g, 28.8);
+  assert.equal(record.fatPer100g, 0.4);
+  assert.equal(record.servingSizeG, 200);
+  assert.equal(record.servingQuantity, 1);
+  assert.equal(record.servingUnit, 'serving');
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseQuantityAndUnit recognizes additional discrete serving descriptors', () => {
   assert.deepEqual(testExports.parseQuantityAndUnit('1 slice (28 g)'), {
     quantity: 1,
