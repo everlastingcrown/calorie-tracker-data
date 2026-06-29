@@ -120,6 +120,68 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory prefers structured packaging serving grams', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '9310432001423',
+      product_name: 'Udon noodles',
+      brands: 'Obento',
+      serving_size: 'serving',
+      nutrition: {
+        input_sets: [
+          {
+            per: 'serving',
+            per_quantity: 200,
+            per_unit: 'g',
+            source: 'packaging',
+          },
+        ],
+      },
+      nutriments: {
+        'energy-kcal_100g': 138.62,
+        proteins_100g: 3.1,
+        carbohydrates_100g: 28.8,
+        fat_100g: 0.4,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.servingSizeG, 200);
+  assert.equal(record.servingQuantity, 1);
+  assert.equal(record.servingUnit, 'serving');
+  assert.equal(record.servingDescription, 'serving');
+  assert.deepEqual(record.servingWeightsG, { serving: 200 });
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseOpenFoodFactsServing skips structured serving milliliters', () => {
+  const serving = testExports.parseOpenFoodFactsServing({
+    serving_size: '2 tbsp (30 g)',
+    nutrition: {
+      input_sets: [
+        {
+          per: 'serving',
+          per_quantity: 250,
+          per_unit: 'ml',
+          source: 'packaging',
+        },
+      ],
+    },
+  });
+
+  assert.equal(serving?.grams, 30);
+  assert.equal(serving?.quantity, 2);
+  assert.equal(serving?.unit, 'tbsp');
+  assert.deepEqual(serving?.weightsG, { tbsp: 15 });
+});
+
 test('parseOpenFoodFactsDirectory accepts Obento udon Open Food Facts energy fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });

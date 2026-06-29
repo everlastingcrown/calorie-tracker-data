@@ -1507,7 +1507,35 @@ function openFoodFactsCalories(nutriments: Record<string, unknown>): number | nu
   );
 }
 
+function parseOpenFoodFactsStructuredServing(product: Record<string, unknown>): ServingMeasure | null {
+  const inputSets = objectValue(product.nutrition).input_sets;
+  if (!Array.isArray(inputSets)) return null;
+
+  for (const inputSet of inputSets) {
+    const set = objectValue(inputSet);
+    const per = stringValue(set.per)?.toLowerCase();
+    const source = stringValue(set.source)?.toLowerCase();
+    const perUnit = stringValue(set.per_unit)?.toLowerCase();
+    const perQuantity = numberValue(set.per_quantity);
+
+    if (per !== 'serving' || source !== 'packaging') continue;
+    if (perUnit !== 'g' || perQuantity == null || perQuantity <= 0) continue;
+
+    return createServingMeasure({
+      grams: perQuantity,
+      quantity: 1,
+      unit: 'serving',
+      description: stringValue(product.serving_size) ?? 'serving',
+    });
+  }
+
+  return null;
+}
+
 function parseOpenFoodFactsServing(product: Record<string, unknown>): ServingMeasure | null {
+  const structuredServing = parseOpenFoodFactsStructuredServing(product);
+  if (structuredServing) return structuredServing;
+
   const servingSize = stringValue(product.serving_size);
   const servingQuantity = numberValue(product.serving_quantity);
   const parsedMeasure = parseQuantityAndUnit(servingSize);
