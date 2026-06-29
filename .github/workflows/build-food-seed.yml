@@ -13,6 +13,23 @@ jobs:
     timeout-minutes: 120
 
     steps:
+      - name: Check runner storage before cleanup
+        run: df -h /
+
+      - name: Free runner disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Check runner storage after cleanup
+        run: df -h /
+
       - name: Checkout
         uses: actions/checkout@v4
 
