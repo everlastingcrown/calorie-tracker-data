@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 export interface FoodSeedManifestFile {
   id: string;
   url: string;
-  sha256: string;
+  sha256?: string;
   fileName: string;
   extract?: 'zip';
 }
@@ -51,7 +51,7 @@ export async function readFoodSeedInputManifest(
       throw new Error(`Manifest source ${source.id} must include license name, url, and attribution.`);
     }
     for (const file of source.files) {
-      if (!/^[a-f0-9]{64}$/.test(file.sha256)) {
+      if (file.sha256 !== undefined && !/^[a-f0-9]{64}$/.test(file.sha256)) {
         throw new Error(`Manifest file ${source.id}/${file.id} has an invalid sha256.`);
       }
     }

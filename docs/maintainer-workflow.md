@@ -10,8 +10,8 @@
 sha256sum path/to/source-file
 ```
 
-4. Replace the manifest file entry's `sha256`.
-5. Run `npm run download:inputs` to verify the manifest hash and populate `inputs/food-seed/`.
+4. Replace the manifest file entry's `sha256`. Omit `sha256` only for rolling sources that cannot provide durable immutable URLs; those files are downloaded fresh and their hashes are recorded in the generated artifact manifest.
+5. Run `npm run download:inputs` to verify pinned manifest hashes and populate `inputs/food-seed/`.
 6. Run `npm run build:food-seed` to generate artifacts.
 7. Inspect `generated/food-seed/foods.qa.json` for rejected rows or duplicate spikes.
 8. Commit the manifest update and trigger the `Build food seed` workflow from GitHub Actions.
@@ -31,7 +31,7 @@ For the currently enabled sources, the verified license pages are:
 - Open Food Facts data exports: https://world.openfoodfacts.org/data
 - Open Food Facts API documentation: https://openfoodfacts.github.io/openfoodfacts-server/api/
 
-When refreshing Open Food Facts, prefer the official `https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz` export. It redirects to S3; use the redirected S3 `versionId` query parameter in `inputs/manifest.json` so the source remains immutable after the daily export advances.
+Open Food Facts uses the official `https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz` export. It redirects to S3, but S3 object versions may expire under the publisher's lifecycle policy. Keep this source on the stable static URL without `sha256`; each generated `foods.manifest.json` records the actual downloaded file hash.
 
 ## CI Limits
 

@@ -118,6 +118,54 @@ test('downloadManifestInputs writes verified manifest files to source output dir
   await rm(dir, { recursive: true, force: true });
 });
 
+test('downloadManifestInputs refreshes files without pinned hashes', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-download-unverified-'));
+  const cacheDir = path.join(dir, 'cache');
+  const outputDir = path.join(dir, 'inputs');
+
+  const createManifest = (contents: string) => ({
+    schemaVersion: 1 as const,
+    releaseTag: 'food-seed-test',
+    sources: [
+      {
+        id: 'fixture-source',
+        provider: 'openfoodfacts' as const,
+        title: 'Fixture source',
+        version: 'daily-latest',
+        enabled: true,
+        outputDir: 'fixture',
+        license: {
+          name: 'Fixture License',
+          url: 'https://example.com/license',
+          attribution: 'Fixture source.',
+        },
+        files: [
+          {
+            id: 'fixture-file',
+            url: `data:text/plain,${encodeURIComponent(contents)}`,
+            fileName: 'fixture.txt',
+          },
+        ],
+      },
+    ],
+  });
+
+  const args = {
+    manifestPath: path.join(dir, 'manifest.json'),
+    cacheDir,
+    outputDir,
+    includeDisabled: false,
+  };
+
+  await downloadManifestInputs(createManifest('first\n'), args);
+  await downloadManifestInputs(createManifest('second\n'), args);
+
+  const downloaded = await readFile(path.join(outputDir, 'fixture', 'fixture.txt'), 'utf8');
+  assert.equal(downloaded, 'second\n');
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('readFoodSeedInputManifest requires source license details', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-manifest-license-'));
   const manifestPath = path.join(dir, 'manifest.json');
@@ -168,6 +216,7 @@ test('buildFoodSeedReleaseNotes includes enabled source licenses and skips disab
         version: '2026-04-30',
         enabled: true,
         outputDir: 'enabled',
+        notes: 'Rolling source note.',
         license: {
           name: 'CC0 1.0 Universal',
           url: 'https://creativecommons.org/publicdomain/zero/1.0/',
@@ -198,5 +247,6 @@ test('buildFoodSeedReleaseNotes includes enabled source licenses and skips disab
   assert.match(notes, /CC0 1\.0 Universal/);
   assert.match(notes, /Enabled attribution\./);
   assert.match(notes, /Use source attribution\./);
+  assert.match(notes, /Rolling source note\./);
   assert.doesNotMatch(notes, /Disabled source/);
 });
