@@ -652,6 +652,26 @@ test('parseOpenFoodFactsDirectory accepts additional Open Food Facts energy fall
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory caps retained rejected row samples', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  const products = Array.from({ length: 1005 }, (_, index) =>
+    JSON.stringify({
+      code: `400000000${String(index).padStart(4, '0')}`,
+      product_name: `Rejected Product ${index}`,
+      nutriments: {},
+    })
+  );
+  await writeFile(path.join(dir, 'products.jsonl'), `${products.join('\n')}\n`);
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+
+  assert.equal(source.rejectedRowCount, 1005);
+  assert.equal(source.rejectedRows.length, 1000);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   const food = testExports.buildSeedFood(
     testExports.createStagingRecord({

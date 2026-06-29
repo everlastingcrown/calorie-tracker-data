@@ -124,6 +124,7 @@ interface SeedQAReport {
     duplicateGroups: number;
   };
   rejectedRows: RejectedRow[];
+  rejectedRowsTruncated: boolean;
   duplicateGroups: QADuplicateGroup[];
 }
 
@@ -222,6 +223,8 @@ const OFF_COUNTRY_CODES_BY_TAG: Record<string, string> = {
   'united-states': 'us',
   'united-states-of-america': 'us',
 };
+
+const MAX_OPENFOODFACTS_QA_REJECTED_ROWS = 1000;
 
 interface ServingMeasure {
   grams: number;
@@ -1583,12 +1586,14 @@ async function parseOpenFoodFactsDirectory(
         product = JSON.parse(line) as Record<string, unknown>;
       } catch {
         parsed.rejectedRowCount = (parsed.rejectedRowCount ?? parsed.rejectedRows.length) + 1;
-        parsed.rejectedRows.push({
-          provider: 'openfoodfacts',
-          providerId: '',
-          reason: 'invalid jsonl row',
-          name: '',
-        });
+        if (parsed.rejectedRows.length < MAX_OPENFOODFACTS_QA_REJECTED_ROWS) {
+          parsed.rejectedRows.push({
+            provider: 'openfoodfacts',
+            providerId: '',
+            reason: 'invalid jsonl row',
+            name: '',
+          });
+        }
         continue;
       }
 
@@ -1640,12 +1645,14 @@ async function parseOpenFoodFactsDirectory(
       const rejectionReason = shouldRejectRecord(record);
       if (rejectionReason) {
         parsed.rejectedRowCount = (parsed.rejectedRowCount ?? parsed.rejectedRows.length) + 1;
-        parsed.rejectedRows.push({
-          provider: 'openfoodfacts',
-          providerId,
-          reason: rejectionReason,
-          name: record.name,
-        });
+        if (parsed.rejectedRows.length < MAX_OPENFOODFACTS_QA_REJECTED_ROWS) {
+          parsed.rejectedRows.push({
+            provider: 'openfoodfacts',
+            providerId,
+            reason: rejectionReason,
+            name: record.name,
+          });
+        }
         continue;
       }
 
@@ -1807,6 +1814,9 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   ];
   const stagingRecords = sources.flatMap((source) => source.stagingRecords);
   const rejectedRows = sources.flatMap((source) => source.rejectedRows);
+  const rejectedRowsTruncated = sources.some(
+    (source) => (source.rejectedRowCount ?? source.rejectedRows.length) > source.rejectedRows.length
+  );
   const genericStagingRecords = stagingRecords.filter((record) => record.provider !== 'openfoodfacts');
   const {
     records: dedupedGenericRecords,
@@ -1840,6 +1850,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
       duplicateGroups: duplicateGroups.length,
     },
     rejectedRows,
+    rejectedRowsTruncated,
     duplicateGroups,
   };
 
