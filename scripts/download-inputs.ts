@@ -73,6 +73,9 @@ async function fileExists(filePath: string): Promise<boolean> {
 }
 
 function cachedFilePath(cacheDir: string, file: FoodSeedManifestFile): string {
+  if (file.sha256 === undefined) {
+    return path.join(cacheDir, `unverified-${file.id}-${file.fileName}`);
+  }
   return path.join(cacheDir, `${file.sha256}-${file.fileName}`);
 }
 
@@ -116,7 +119,7 @@ async function downloadFile(url: string, filePath: string): Promise<void> {
 
 async function ensureCachedFile(cacheDir: string, file: FoodSeedManifestFile): Promise<string> {
   const cachePath = cachedFilePath(cacheDir, file);
-  if (await fileExists(cachePath)) {
+  if (file.sha256 !== undefined && (await fileExists(cachePath))) {
     const cachedSha = await hashFile(cachePath);
     if (cachedSha === file.sha256) return cachePath;
     await fs.rm(cachePath, { force: true });
@@ -125,12 +128,16 @@ async function ensureCachedFile(cacheDir: string, file: FoodSeedManifestFile): P
   process.stdout.write(`Downloading ${file.url}\n`);
   await downloadFile(file.url, cachePath);
 
-  const actualSha = await hashFile(cachePath);
-  if (actualSha !== file.sha256) {
-    await fs.rm(cachePath, { force: true });
-    throw new Error(
-      `SHA256 mismatch for ${file.id}: expected ${file.sha256}, downloaded ${actualSha}`
-    );
+  if (file.sha256 !== undefined) {
+    const actualSha = await hashFile(cachePath);
+    if (actualSha !== file.sha256) {
+      await fs.rm(cachePath, { force: true });
+      throw new Error(
+        `SHA256 mismatch for ${file.id}: expected ${file.sha256}, downloaded ${actualSha}`
+      );
+    }
+  } else {
+    process.stdout.write(`No SHA256 pinned for ${file.id}; using freshly downloaded file\n`);
   }
 
   return cachePath;

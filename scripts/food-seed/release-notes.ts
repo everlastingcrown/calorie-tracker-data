@@ -3,7 +3,7 @@ import type { FoodSeedInputManifest, FoodSeedManifestSource } from './input-mani
 export function buildFoodSeedReleaseNotes(manifest: FoodSeedInputManifest): string {
   const enabledSources = manifest.sources.filter((source) => source.enabled);
   const sections = [
-    'Food seed artifacts built from pinned public source files in `inputs/manifest.json`.',
+    'Food seed artifacts built from public source files in `inputs/manifest.json`.',
     '',
     '## Included sources',
     ...enabledSources.flatMap(formatSource),
@@ -16,12 +16,18 @@ export function buildFoodSeedReleaseNotes(manifest: FoodSeedInputManifest): stri
 }
 
 function formatSource(source: FoodSeedManifestSource): string[] {
-  return [
+  const lines = [
     '',
     `- ${source.title}`,
     `  - Version: ${source.version}`,
     `  - Manifest source id: \`${source.id}\``,
   ];
+
+  if (source.notes) {
+    lines.push(`  - Notes: ${source.notes}`);
+  }
+
+  return lines;
 }
 
 function formatSourceLicense(source: FoodSeedManifestSource): string[] {
