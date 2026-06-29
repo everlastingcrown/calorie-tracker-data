@@ -1473,6 +1473,40 @@ function objectValue(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function openFoodFactsAggregatedNutriments(product: Record<string, unknown>): Record<string, unknown> {
+  const nutrition = objectValue(product.nutrition);
+  const aggregatedSet = objectValue(nutrition.aggregated_set);
+  const nutrients = objectValue(aggregatedSet.nutrients);
+  const nutriments: Record<string, unknown> = {};
+
+  for (const [key, nutrient] of Object.entries(nutrients)) {
+    nutriments[key] = objectValue(nutrient).value;
+  }
+
+  return nutriments;
+}
+
+function openFoodFactsCalories(nutriments: Record<string, unknown>): number | null {
+  return (
+    firstNumberValue(
+      nutriments['energy-kcal_100g'],
+      nutriments['energy-kcal'],
+      nutriments['energy-kcal_value']
+    ) ??
+    (() => {
+      const energyKj = firstNumberValue(
+        nutriments['energy-kj_100g'],
+        nutriments.energy_100g,
+        nutriments['energy-kj'],
+        nutriments.energy,
+        nutriments.energy_value,
+        nutriments['energy-kj_value']
+      );
+      return energyKj != null ? roundNumber(energyKj * 0.239005736) : null;
+    })()
+  );
+}
+
 function parseOpenFoodFactsServing(product: Record<string, unknown>): ServingMeasure | null {
   const servingSize = stringValue(product.serving_size);
   const servingQuantity = numberValue(product.serving_quantity);
@@ -1534,24 +1568,14 @@ async function parseOpenFoodFactsDirectory(
       const rawName = stringValue(product.product_name) ?? stringValue(product.generic_name);
       if (!providerId || !rawName) continue;
 
-      const nutriments = objectValue(product.nutriments);
-      const calories =
-        firstNumberValue(
-          nutriments['energy-kcal_100g'],
-          nutriments['energy-kcal'],
-          nutriments['energy-kcal_value']
-        ) ??
-        (() => {
-          const energyKj = firstNumberValue(
-            nutriments['energy-kj_100g'],
-            nutriments.energy_100g,
-            nutriments['energy-kj'],
-            nutriments.energy,
-            nutriments.energy_value,
-            nutriments['energy-kj_value']
-          );
-          return energyKj != null ? roundNumber(energyKj * 0.239005736) : null;
-        })();
+      const legacyNutriments = objectValue(product.nutriments);
+      const aggregatedNutriments = openFoodFactsAggregatedNutriments(product);
+      let nutriments = legacyNutriments;
+      let calories = openFoodFactsCalories(nutriments);
+      if (calories == null) {
+        nutriments = aggregatedNutriments;
+        calories = openFoodFactsCalories(nutriments);
+      }
       const serving = parseOpenFoodFactsServing(product);
       const imageUrl =
         stringValue(product.image_front_url) ??
