@@ -52,6 +52,8 @@ jobs:
         run: npm run download:inputs
 
       - name: Build food seed artifacts
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
         run: npm run build:food-seed
 
       - name: Check runner storage

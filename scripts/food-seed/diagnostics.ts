@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import v8 from 'node:v8';
 import type { DedupeAccumulator, ParsedSource } from './types.ts';
 
 export interface PipelineDiagnosticsOptions {
@@ -62,13 +63,16 @@ export class PipelineDiagnostics {
     outputDir?: string
   ): Promise<void> {
     const memory = process.memoryUsage();
+    const heapLimit = v8.getHeapStatistics().heap_size_limit;
     const storageBytes = outputDir ? await directorySize(outputDir).catch(() => null) : null;
     const parts = [
+      'timestamp=' + new Date(this.now()).toISOString(),
       'stage=' + stage,
       ...formatCounts(counts),
       'rss=' + formatBytes(memory.rss),
       'heapUsed=' + formatBytes(memory.heapUsed),
       'heapTotal=' + formatBytes(memory.heapTotal),
+      'heapLimit=' + formatBytes(heapLimit),
       'external=' + formatBytes(memory.external),
     ];
     if (storageBytes != null) parts.push('storage=' + formatBytes(storageBytes));

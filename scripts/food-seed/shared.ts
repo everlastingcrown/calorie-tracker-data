@@ -543,6 +543,8 @@ export function finalizeDedupeAccumulator(accumulator: DedupeAccumulator): {
     records.push(kept);
     if (duplicateGroup) duplicateGroups.push(duplicateGroup);
   }
+  accumulator.groups.clear();
+  accumulator.groupsByKey.clear();
 
   records.sort((left, right) => left.name.localeCompare(right.name));
   duplicateGroups.sort((left, right) => left.normalizedName.localeCompare(right.normalizedName));

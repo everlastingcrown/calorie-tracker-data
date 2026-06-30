@@ -895,6 +895,67 @@ test('parseOpenFoodFactsDirectory tags country brand license and image quality',
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory streams accepted records without retaining staging rows', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  const streamedRecords: ReturnType<typeof createDedupeRecord>[] = [];
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '4567890123456',
+      product_name: 'Peanut Butter',
+      brands: 'Example Brand',
+      nutriments: {
+        'energy-kcal_100g': 588,
+        proteins_100g: 25,
+        carbohydrates_100g: 20,
+        fat_100g: 50,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir, {
+    onStagingRecord: (record) => streamedRecords.push(record),
+  });
+
+  assert.equal(streamedRecords.length, 1);
+  assert.equal(source.stagingRecordCount, 1);
+  assert.equal(source.stagingRecords.length, 0);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('finalizeDedupeAccumulator releases accumulator groups after finalization', () => {
+  const accumulator = testExports.createDedupeAccumulator();
+  testExports.addDedupeRecord(
+    accumulator,
+    createDedupeRecord({
+      providerId: 'low',
+      name: 'Peanut Butter',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+    })
+  );
+  testExports.addDedupeRecord(
+    accumulator,
+    createDedupeRecord({
+      providerId: 'high',
+      name: 'Peanut Butter',
+      brandName: 'Example Brand',
+      countryCode: 'us',
+      imageUrl: 'https://static.openfoodfacts.org/images/products/high/front_en.1.400.jpg',
+    })
+  );
+
+  const { records, duplicateGroups } = testExports.finalizeDedupeAccumulator(accumulator);
+
+  assert.equal(records.length, 1);
+  assert.equal(records[0].providerId, 'high');
+  assert.equal(duplicateGroups.length, 1);
+  assert.equal(testExports.dedupeAccumulatorGroupCount(accumulator), 0);
+  assert.equal(accumulator.groupsByKey.size, 0);
+});
+
 test('buildFoodSeedArtifacts splits generic and branded outputs by country', async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
   const usdaDir = path.join(rootDir, 'usda');
