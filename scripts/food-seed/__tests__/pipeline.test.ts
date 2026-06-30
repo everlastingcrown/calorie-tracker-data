@@ -956,6 +956,33 @@ test('finalizeDedupeAccumulator releases accumulator groups after finalization',
   assert.equal(accumulator.groupsByKey.size, 0);
 });
 
+test('addDedupeRecord indexes growing duplicate groups without rebuilding record keys', () => {
+  const accumulator = testExports.createDedupeAccumulator();
+  const recordCount = 500;
+
+  for (let index = 0; index < recordCount; index += 1) {
+    testExports.addDedupeRecord(
+      accumulator,
+      createDedupeRecord({
+        providerId: `duplicate-${index}`,
+        name: 'Peanut Butter 16 oz',
+        brandName: 'Example Brand',
+        countryCode: 'us',
+        barcode: `duplicate-${index}`,
+      })
+    );
+  }
+
+  assert.equal(testExports.dedupeAccumulatorGroupCount(accumulator), 1);
+  assert.equal(accumulator.groupsByKey.size, recordCount + 1);
+
+  const { records, duplicateGroups } = testExports.finalizeDedupeAccumulator(accumulator);
+
+  assert.equal(records.length, 1);
+  assert.equal(duplicateGroups.length, 1);
+  assert.equal(duplicateGroups[0].droppedIds.length, recordCount - 1);
+});
+
 test('buildFoodSeedArtifacts splits generic and branded outputs by country', async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
   const usdaDir = path.join(rootDir, 'usda');

@@ -4,6 +4,7 @@ import { once } from 'node:events';
 import path from 'node:path';
 import type {
   DedupeAccumulator,
+  DedupeGroup,
   Provider,
   QADuplicateGroup,
   SeedFood,
@@ -506,28 +507,44 @@ export function createDedupeAccumulator(): DedupeAccumulator {
   };
 }
 
+function createDedupeGroup(record: SeedStagingRecord, keys: string[]): DedupeGroup {
+  return {
+    records: [record],
+    keys: new Set(keys),
+  };
+}
+
 export function addDedupeRecord(accumulator: DedupeAccumulator, record: SeedStagingRecord): void {
   const keys = dedupeRecordKeys(record);
-  const matchingGroups: SeedStagingRecord[][] = [];
+  const matchingGroups: DedupeGroup[] = [];
   for (const key of keys) {
     const group = accumulator.groupsByKey.get(key);
     if (group && !matchingGroups.includes(group)) matchingGroups.push(group);
   }
 
   if (matchingGroups.length === 0) {
-    const group = [record];
+    const group = createDedupeGroup(record, keys);
     accumulator.groups.add(group);
     for (const key of keys) accumulator.groupsByKey.set(key, group);
     return;
   }
 
-  const mergedGroup = [...matchingGroups.flat(), record];
-  for (const group of matchingGroups) accumulator.groups.delete(group);
-  accumulator.groups.add(mergedGroup);
+  const targetGroup = matchingGroups.reduce((largest, group) =>
+    group.records.length > largest.records.length ? group : largest
+  );
+  targetGroup.records.push(record);
+  for (const key of keys) {
+    targetGroup.keys.add(key);
+    accumulator.groupsByKey.set(key, targetGroup);
+  }
 
-  for (const groupedRecord of mergedGroup) {
-    for (const key of dedupeRecordKeys(groupedRecord)) {
-      accumulator.groupsByKey.set(key, mergedGroup);
+  for (const group of matchingGroups) {
+    if (group === targetGroup) continue;
+    accumulator.groups.delete(group);
+    targetGroup.records.push(...group.records);
+    for (const key of group.keys) {
+      targetGroup.keys.add(key);
+      accumulator.groupsByKey.set(key, targetGroup);
     }
   }
 }
@@ -539,7 +556,7 @@ export function finalizeDedupeAccumulator(accumulator: DedupeAccumulator): {
   const records: SeedStagingRecord[] = [];
   const duplicateGroups: QADuplicateGroup[] = [];
   for (const group of accumulator.groups) {
-    const { kept, duplicateGroup } = buildDuplicateGroup(group);
+    const { kept, duplicateGroup } = buildDuplicateGroup(group.records);
     records.push(kept);
     if (duplicateGroup) duplicateGroups.push(duplicateGroup);
   }

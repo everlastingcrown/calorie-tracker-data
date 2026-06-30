@@ -79,6 +79,11 @@ export interface QADuplicateGroup {
   droppedIds: string[];
 }
 
+export interface DedupeGroup {
+  records: SeedStagingRecord[];
+  keys: Set<string>;
+}
+
 export interface SeedManifest {
   generatedAt: string;
   stagingSchemaVersion: 2;
@@ -130,8 +135,8 @@ export interface BuildSummary {
 }
 
 export interface DedupeAccumulator {
-  groups: Set<SeedStagingRecord[]>;
-  groupsByKey: Map<string, SeedStagingRecord[]>;
+  groups: Set<DedupeGroup>;
+  groupsByKey: Map<string, DedupeGroup>;
 }
 
 export interface OpenFoodFactsParseOptions {
