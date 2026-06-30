@@ -178,8 +178,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
         {
           ...counts,
           brandedGroups: dedupeAccumulatorGroupCount(brandedAccumulator),
-        },
-        args.outputDir
+        }
       ),
   });
   const sources = [...usdaSources, ...afcdSources, ...openFoodFactsSources];
