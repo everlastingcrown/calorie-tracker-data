@@ -21,6 +21,7 @@ export interface SeedFood {
   servingUnit: string | null;
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
+  servingSizes: ServingSize[];
   barcode: string | null;
   barcodes: string[];
   source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
@@ -45,6 +46,7 @@ export interface SeedStagingRecord {
   servingUnit: string | null;
   servingDescription: string | null;
   servingWeightsG: Record<string, number>;
+  servingSizes: ServingSize[];
   barcode: string | null;
   barcodes: string[];
   imageUrl: string | null;
@@ -154,4 +156,16 @@ export interface ServingMeasure {
   unit: string | null;
   description: string | null;
   weightsG: Record<string, number>;
+  source?: ServingSize['source'];
+  quality?: ServingSize['quality'];
+}
+
+export interface ServingSize {
+  grams: number;
+  quantity: number | null;
+  unit: string | null;
+  description: string | null;
+  source: 'usda_portion' | 'afcd_measure' | 'off_structured' | 'off_label';
+  quality: 'high' | 'medium' | 'low';
+  confidence: number;
 }

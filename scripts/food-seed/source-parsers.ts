@@ -12,7 +12,6 @@ import type {
   ServingMeasure,
 } from './types.ts';
 import {
-  combineServingMeasures,
   createServingMeasure,
   createStagingRecord,
   normalizeDisplayName,
@@ -22,6 +21,11 @@ import {
   parseQuantityAndUnit,
   roundNumber,
 } from './shared.ts';
+import {
+  buildServingSizes,
+  preferredServingMeasure,
+  servingWeightsFromSizes,
+} from './serving-sizes.ts';
 
 const USDA_NUTRIENTS = {
   calories: 1008,
@@ -98,7 +102,7 @@ export function findHeaderKey(row: Record<string, unknown>, matchers: readonly R
 }
 
 export function chooseBestServing(servings: ServingMeasure[]): ServingMeasure | null {
-  return combineServingMeasures(servings);
+  return preferredServingMeasure(servings);
 }
 
 export function shouldRejectRecord(record: SeedStagingRecord): string | null {
@@ -193,6 +197,7 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
       quantity: parsedMeasure?.quantity ?? null,
       unit: parsedMeasure?.unit ?? null,
       description: description || null,
+      source: 'usda_portion',
     });
     if (!serving) continue;
 
@@ -233,7 +238,9 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
       carbs: null,
       fat: null,
     };
-    const serving = chooseBestServing(servingsByFood.get(providerId) ?? []);
+    const servingMeasures = servingsByFood.get(providerId) ?? [];
+    const serving = chooseBestServing(servingMeasures);
+    const servingSizes = buildServingSizes(servingMeasures, 'usda_portion');
 
     const record = createStagingRecord({
       provider,
@@ -250,7 +257,8 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
       servingQuantity: serving?.quantity ?? null,
       servingUnit: serving?.unit ?? null,
       servingDescription: serving?.description ?? null,
-      servingWeightsG: serving?.weightsG ?? {},
+      servingWeightsG: servingWeightsFromSizes(servingSizes),
+      servingSizes,
       barcode: null,
       imageUrl: null,
       license: 'public-domain',
@@ -430,6 +438,7 @@ export function parseAfcdServingFromRow(row: Record<string, unknown>): ServingMe
     quantity: parsedMeasure?.quantity ?? quantity,
     unit: parsedMeasure?.unit ?? normalizeServingUnit(description),
     description: description || null,
+    source: 'afcd_measure',
   });
 }
 
@@ -535,10 +544,12 @@ export async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[
       carbs: null,
       fat: null,
     };
-    const serving = chooseBestServing([
+    const servingMeasures = [
       parseAfcdServingFromRow(row),
       ...(servingsByFood.get(providerId) ?? []),
-    ].filter((value): value is ServingMeasure => value != null));
+    ].filter((value): value is ServingMeasure => value != null);
+    const serving = chooseBestServing(servingMeasures);
+    const servingSizes = buildServingSizes(servingMeasures, 'afcd_measure');
 
     const record = createStagingRecord({
       provider: 'afcd',
@@ -555,7 +566,8 @@ export async function parseAfcdDirectory(afcdDir: string): Promise<ParsedSource[
       servingQuantity: serving?.quantity ?? null,
       servingUnit: serving?.unit ?? null,
       servingDescription: serving?.description ?? null,
-      servingWeightsG: serving?.weightsG ?? {},
+      servingWeightsG: servingWeightsFromSizes(servingSizes),
+      servingSizes,
       barcode: null,
       imageUrl: null,
       license: 'CC BY 4.0',
@@ -715,6 +727,7 @@ export function parseOpenFoodFactsStructuredServing(product: Record<string, unkn
       quantity: 1,
       unit: 'serving',
       description: stringValue(product.serving_size) ?? 'serving',
+      source: 'off_structured',
     });
   }
 
@@ -739,6 +752,7 @@ export function parseOpenFoodFactsServing(product: Record<string, unknown>): Ser
     quantity: parsedMeasure?.quantity ?? null,
     unit: parsedMeasure?.unit ?? null,
     description: servingSize,
+    source: 'off_label',
   });
 }
 
@@ -810,7 +824,11 @@ export async function parseOpenFoodFactsDirectory(
         nutriments = aggregatedNutriments;
         calories = openFoodFactsCalories(nutriments);
       }
-      const serving = parseOpenFoodFactsServing(product);
+      const servingMeasures = [parseOpenFoodFactsServing(product)].filter(
+        (value): value is ServingMeasure => value != null
+      );
+      const serving = chooseBestServing(servingMeasures);
+      const servingSizes = buildServingSizes(servingMeasures, 'off_label');
       const imageUrl =
         stringValue(product.image_front_url) ??
         stringValue(product.image_url) ??
@@ -835,7 +853,8 @@ export async function parseOpenFoodFactsDirectory(
         servingQuantity: serving?.quantity ?? null,
         servingUnit: serving?.unit ?? null,
         servingDescription: serving?.description ?? null,
-        servingWeightsG: serving?.weightsG ?? {},
+        servingWeightsG: servingWeightsFromSizes(servingSizes),
+        servingSizes,
         barcode: providerId,
         imageUrl,
         license: 'ODbL',

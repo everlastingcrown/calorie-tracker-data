@@ -9,6 +9,7 @@ import type {
   QADuplicateGroup,
   SeedFood,
   SeedStagingRecord,
+  ServingSize,
   ServingMeasure,
 } from './types.ts';
 
@@ -152,6 +153,8 @@ export function createServingMeasure(input: {
   unit?: string | null;
   description?: string | null;
   weightsG?: Record<string, number>;
+  source?: ServingSize['source'];
+  quality?: ServingSize['quality'];
 }): ServingMeasure | null {
   if (input.grams == null || input.grams <= 0) return null;
 
@@ -162,6 +165,8 @@ export function createServingMeasure(input: {
     quantity: quantity != null ? roundNumber(quantity) : null,
     unit,
     description: input.description?.trim() || null,
+    source: input.source,
+    quality: input.quality,
     weightsG: mergeServingWeights(
       input.weightsG ?? {},
       servingWeightsForMeasure(input.grams, quantity, unit)
@@ -380,7 +385,8 @@ export function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'
     score += 3;
   }
   if (record.servingSizeG != null) score += 2;
-  if (Object.keys(record.servingWeightsG).length > 0) score += 2;
+  if (record.servingSizes.length > 0) score += 2;
+  if (Object.keys(record.servingWeightsG).length > 0) score += 1;
   if (record.barcode) score += 1;
   if (record.brandName) score += 1;
   if (record.imageUrl) score += 1;
@@ -397,18 +403,38 @@ export function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'
 }
 
 export function createStagingRecord(
-  input: Omit<SeedStagingRecord, 'qualityScore' | 'barcodes'> & {
+  input: Omit<SeedStagingRecord, 'qualityScore' | 'barcodes' | 'servingSizes'> & {
     barcodes?: string[];
+    servingSizes?: ServingSize[];
     warnings?: string[];
   }
 ): SeedStagingRecord {
   const warnings = input.warnings ?? [];
   const barcodes = uniqueBarcodes([...(input.barcodes ?? []), input.barcode]);
-  return {
+  const servingSizes = input.servingSizes ?? (
+    input.servingSizeG != null
+      ? [
+          {
+            grams: input.servingSizeG,
+            quantity: input.servingQuantity,
+            unit: input.servingUnit,
+            description: input.servingDescription,
+            source: 'off_label',
+            quality: 'low',
+            confidence: 0.5,
+          } satisfies ServingSize,
+        ]
+      : []
+  );
+  const record = {
     ...input,
+    servingSizes,
     barcodes,
     warnings,
-    qualityScore: buildQualityScore({ ...input, warnings }),
+  };
+  return {
+    ...record,
+    qualityScore: buildQualityScore(record),
   };
 }
 
@@ -435,6 +461,7 @@ export function buildSeedFood(record: SeedStagingRecord, generatedAt: string): S
     servingUnit: record.servingUnit,
     servingDescription: record.servingDescription,
     servingWeightsG: record.servingWeightsG,
+    servingSizes: record.servingSizes,
     barcode: record.barcode,
     barcodes: recordBarcodes(record),
     source,

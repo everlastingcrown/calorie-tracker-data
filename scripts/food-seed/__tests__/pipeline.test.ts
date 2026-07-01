@@ -83,6 +83,26 @@ test('parseUsdaDirectory extracts household serving weights from portions', asyn
   assert.equal(record.servingQuantity, 2);
   assert.equal(record.servingUnit, 'tbsp');
   assert.deepEqual(record.servingWeightsG, { cup: 240, tbsp: 15 });
+  assert.deepEqual(record.servingSizes, [
+    {
+      grams: 30,
+      quantity: 2,
+      unit: 'tbsp',
+      description: '2 tbsp minced',
+      source: 'usda_portion',
+      quality: 'high',
+      confidence: 0.95,
+    },
+    {
+      grams: 240,
+      quantity: 1,
+      unit: 'cup',
+      description: '1 cup chopped',
+      source: 'usda_portion',
+      quality: 'high',
+      confidence: 0.95,
+    },
+  ]);
 
   await rm(dir, { recursive: true, force: true });
 });
@@ -116,6 +136,17 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   assert.equal(record.servingUnit, 'tbsp');
   assert.equal(record.servingDescription, '2 tbsp (30 g)');
   assert.deepEqual(record.servingWeightsG, { tbsp: 15 });
+  assert.deepEqual(record.servingSizes, [
+    {
+      grams: 30,
+      quantity: 2,
+      unit: 'tbsp',
+      description: '2 tbsp (30 g)',
+      source: 'off_label',
+      quality: 'medium',
+      confidence: 0.75,
+    },
+  ]);
 
   await rm(dir, { recursive: true, force: true });
 });
@@ -157,6 +188,17 @@ test('parseOpenFoodFactsDirectory prefers structured packaging serving grams', a
   assert.equal(record.servingUnit, 'serving');
   assert.equal(record.servingDescription, 'serving');
   assert.deepEqual(record.servingWeightsG, { serving: 200 });
+  assert.deepEqual(record.servingSizes, [
+    {
+      grams: 200,
+      quantity: 1,
+      unit: 'serving',
+      description: 'serving',
+      source: 'off_structured',
+      quality: 'high',
+      confidence: 0.95,
+    },
+  ]);
 
   await rm(dir, { recursive: true, force: true });
 });
@@ -546,6 +588,26 @@ test('parseAfcdDirectory joins AUSNUT food measures and skips density rows', asy
   assert.equal(record.servingUnit, 'can');
   assert.equal(record.servingDescription, '1 can');
   assert.deepEqual(record.servingWeightsG, { can: 332.97, bottle: 378.38 });
+  assert.deepEqual(record.servingSizes, [
+    {
+      grams: 332.97,
+      quantity: 1,
+      unit: 'can',
+      description: '1 can',
+      source: 'afcd_measure',
+      quality: 'high',
+      confidence: 0.95,
+    },
+    {
+      grams: 378.38,
+      quantity: 1,
+      unit: 'bottle',
+      description: '1 bottle',
+      source: 'afcd_measure',
+      quality: 'high',
+      confidence: 0.95,
+    },
+  ]);
 
   await rm(dir, { recursive: true, force: true });
 });
@@ -576,6 +638,35 @@ test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   assert.equal(record.carbsPer100g, 70);
   assert.equal(record.fatPer100g, 12);
   assert.equal(record.servingSizeG, 25);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseOpenFoodFactsDirectory filters implausible serving grams', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '2345678901235',
+      product_name: 'Family Cereal',
+      serving_quantity: '9999',
+      serving_size: '1 bowl (9999 g)',
+      nutriments: {
+        'energy-kcal_100g': 380,
+        proteins_100g: 8,
+        carbohydrates_100g: 75,
+        fat_100g: 4,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.servingSizeG, null);
+  assert.deepEqual(record.servingSizes, []);
+  assert.deepEqual(record.servingWeightsG, {});
 
   await rm(dir, { recursive: true, force: true });
 });
@@ -1017,6 +1108,8 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
       product_name: 'Peanut Butter',
       brands: 'Example Brand',
       countries_tags: ['en:united-states'],
+      serving_quantity: '30',
+      serving_size: '2 tbsp (30 g)',
       nutriments: {
         'energy-kcal_100g': 588,
         proteins_100g: 25,
@@ -1047,6 +1140,17 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].source, 'openfoodfacts');
   assert.equal(brandedFoods[0].brandName, 'Example Brand');
   assert.equal(brandedFoods[0].countryCode, 'us');
+  assert.deepEqual(brandedFoods[0].servingSizes, [
+    {
+      grams: 30,
+      quantity: 2,
+      unit: 'tbsp',
+      description: '2 tbsp (30 g)',
+      source: 'off_label',
+      quality: 'medium',
+      confidence: 0.75,
+    },
+  ]);
   assert.equal(manifest.stagingSchemaVersion, 2);
   assert.equal(manifest.totals.genericSeedCount, 1);
   assert.equal(manifest.totals.brandedSeedCount, 1);

@@ -14,6 +14,11 @@ import {
   readWorkbookRows,
 } from './source-parsers.ts';
 import {
+  buildServingSizes,
+  isPlausibleServingGrams,
+  servingWeightsFromSizes,
+} from './serving-sizes.ts';
+import {
   addDedupeRecord,
   buildSeedFood,
   createDedupeAccumulator,
@@ -319,6 +324,9 @@ export const testExports = {
   parseOpenFoodFactsDirectory,
   parseOpenFoodFactsServing,
   parseQuantityAndUnit,
+  buildServingSizes,
+  isPlausibleServingGrams,
+  servingWeightsFromSizes,
   createManifestFileCollector,
   readManifestFileInfo,
   readWorkbookRows,
