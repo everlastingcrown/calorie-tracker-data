@@ -796,6 +796,7 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   assert.equal(food.countryCode, 'us');
   assert.deepEqual(food.barcodes, ['1234567890123']);
   assert.equal(food.license, 'ODbL');
+  assert.equal(food.qualityScore, 64);
 });
 
 test('dedupeSeedRecords matches fuzzy name variants and keeps the highest quality record', () => {
@@ -981,9 +982,59 @@ test('parseOpenFoodFactsDirectory tags country brand license and image quality',
   assert.equal(record.imageUrl, 'https://static.openfoodfacts.org/images/products/345/front_en.1.400.jpg');
   assert.equal(record.license, 'ODbL');
   assert.equal(record.sourceUpdatedAt, '1780876800');
-  assert.equal(record.qualityScore, 9);
+  assert.equal(record.qualityScore, 74);
 
   await rm(dir, { recursive: true, force: true });
+});
+
+test('createStagingRecord computes bounded 0-100 quality scores from completeness and source trust', () => {
+  const richRecord = testExports.createStagingRecord({
+    provider: 'usda_foundation',
+    providerId: 'rich',
+    name: 'Tomatoes, raw',
+    brandName: 'Example Brand',
+    countryCode: 'us',
+    region: 'us',
+    caloriesPer100g: 18,
+    proteinPer100g: 0.9,
+    carbsPer100g: 3.9,
+    fatPer100g: 0.2,
+    servingSizeG: 120,
+    servingQuantity: 1,
+    servingUnit: 'cup',
+    servingDescription: '1 cup',
+    servingWeightsG: { cup: 120 },
+    barcode: '1234567890123',
+    imageUrl: 'https://example.com/tomato.jpg',
+    license: 'public-domain',
+    sourceUpdatedAt: '4102444800',
+    warnings: [],
+  });
+  const sparseRecord = testExports.createStagingRecord({
+    provider: 'openfoodfacts',
+    providerId: 'sparse',
+    name: 'Tomatoes',
+    brandName: null,
+    countryCode: 'us',
+    region: 'global',
+    caloriesPer100g: 18,
+    proteinPer100g: null,
+    carbsPer100g: null,
+    fatPer100g: null,
+    servingSizeG: null,
+    servingQuantity: null,
+    servingUnit: null,
+    servingDescription: null,
+    servingWeightsG: {},
+    barcode: null,
+    imageUrl: null,
+    license: 'ODbL',
+    sourceUpdatedAt: null,
+    warnings: [],
+  });
+
+  assert.equal(richRecord.qualityScore, 100);
+  assert.equal(sparseRecord.qualityScore, 26);
 });
 
 test('parseOpenFoodFactsDirectory streams accepted records without retaining staging rows', async () => {
@@ -1140,6 +1191,7 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].source, 'openfoodfacts');
   assert.equal(brandedFoods[0].brandName, 'Example Brand');
   assert.equal(brandedFoods[0].countryCode, 'us');
+  assert.equal(brandedFoods[0].qualityScore, 80);
   assert.deepEqual(brandedFoods[0].servingSizes, [
     {
       grams: 30,
