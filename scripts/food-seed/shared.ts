@@ -378,18 +378,49 @@ export function dedupeRecordKeys(record: SeedStagingRecord): string[] {
   return barcodeKey ? [`barcode:${barcodeKey}`, dedupeIdentityKey(record)] : [dedupeIdentityKey(record)];
 }
 
+function sourceTrustScore(provider: Provider): number {
+  if (provider === 'usda_foundation') return 10;
+  if (provider === 'afcd') return 9;
+  if (provider === 'usda_sr_legacy') return 8;
+  return 6;
+}
+
+function parseSourceUpdatedAt(value: string | null): number | null {
+  if (!value) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return numeric < 100000000000 ? numeric * 1000 : numeric;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function recencyScore(value: string | null): number {
+  const updatedAt = parseSourceUpdatedAt(value);
+  if (updatedAt == null) return 0;
+
+  const ageDays = Math.max(0, (Date.now() - updatedAt) / 86400000);
+  if (ageDays <= 365) return 10;
+  if (ageDays <= 365 * 3) return 7;
+  if (ageDays <= 365 * 7) return 4;
+  return 2;
+}
+
 export function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore' | 'barcodes'>): number {
   let score = 0;
-  if (record.caloriesPer100g != null) score += 3;
-  if (record.proteinPer100g != null && record.carbsPer100g != null && record.fatPer100g != null) {
-    score += 3;
-  }
-  if (record.servingSizeG != null) score += 2;
-  if (record.servingSizes.length > 0) score += 2;
-  if (Object.keys(record.servingWeightsG).length > 0) score += 1;
-  if (record.barcode) score += 1;
-  if (record.brandName) score += 1;
-  if (record.imageUrl) score += 1;
+  if (record.caloriesPer100g != null) score += 20;
+  if (record.proteinPer100g != null) score += 8;
+  if (record.carbsPer100g != null) score += 8;
+  if (record.fatPer100g != null) score += 8;
+  if (record.servingSizeG != null) score += 10;
+  if (record.servingSizes.length > 0) score += 8;
+  if (Object.keys(record.servingWeightsG).length > 0) score += 4;
+  if (record.barcode) score += 4;
+  if (record.brandName) score += 4;
+  if (record.imageUrl) score += 6;
+  score += recencyScore(record.sourceUpdatedAt);
+  score += sourceTrustScore(record.provider);
   if (
     record.caloriesPer100g != null &&
     record.caloriesPer100g >= 100 &&
@@ -397,9 +428,9 @@ export function buildQualityScore(record: Omit<SeedStagingRecord, 'qualityScore'
     (record.carbsPer100g ?? 0) === 0 &&
     (record.fatPer100g ?? 0) === 0
   ) {
-    score -= 2;
+    score -= 12;
   }
-  return score;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 export function createStagingRecord(
@@ -467,6 +498,7 @@ export function buildSeedFood(record: SeedStagingRecord, generatedAt: string): S
     source,
     license: record.license,
     sourceUpdatedAt: record.sourceUpdatedAt,
+    qualityScore: record.qualityScore,
     createdAt: generatedAt,
   };
 }

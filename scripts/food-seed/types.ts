@@ -27,6 +27,7 @@ export interface SeedFood {
   source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
   license: string;
   sourceUpdatedAt: string | null;
+  qualityScore: number;
   createdAt: string;
 }
 
