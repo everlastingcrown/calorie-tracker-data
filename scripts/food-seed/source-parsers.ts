@@ -432,11 +432,12 @@ export function parseAfcdServingFromRow(row: Record<string, unknown>): ServingMe
 
   if (descriptors.some((descriptor) => /^density$/i.test(descriptor))) return null;
 
-  const parsedMeasure = parseQuantityAndUnit(description);
+  const hasAmbiguousUnit = descriptors.some((descriptor) => /\bor\b/i.test(descriptor));
+  const parsedMeasure = hasAmbiguousUnit ? null : parseQuantityAndUnit(description);
   return createServingMeasure({
     grams: gramWeight,
     quantity: parsedMeasure?.quantity ?? quantity,
-    unit: parsedMeasure?.unit ?? normalizeServingUnit(description),
+    unit: hasAmbiguousUnit ? null : parsedMeasure?.unit ?? normalizeServingUnit(description),
     description: description || null,
     source: 'afcd_measure',
   });

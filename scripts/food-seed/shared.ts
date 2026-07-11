@@ -187,6 +187,10 @@ export function combineServingMeasures(servings: ServingMeasure[]): ServingMeasu
     const rightCommon =
       right.unit && (COMMON_SERVING_UNITS as readonly string[]).includes(right.unit) ? 1 : 0;
     if (leftCommon !== rightCommon) return rightCommon - leftCommon;
+    const leftTinySpoon = (left.unit === 'tbsp' || left.unit === 'tsp') && left.grams < 10 ? 1 : 0;
+    const rightTinySpoon =
+      (right.unit === 'tbsp' || right.unit === 'tsp') && right.grams < 10 ? 1 : 0;
+    if (leftTinySpoon !== rightTinySpoon) return leftTinySpoon - rightTinySpoon;
     return left.grams - right.grams;
   })[0];
 
