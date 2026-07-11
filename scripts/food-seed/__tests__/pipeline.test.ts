@@ -612,6 +612,84 @@ test('parseAfcdDirectory joins AUSNUT food measures and skips density rows', asy
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseAfcdDirectory does not record ambiguous sachet measures as cup weights', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-afcd-'));
+
+  const detailsWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    detailsWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Food details'],
+      ['Public Food Key', 'Food Name'],
+      ['F006143', 'Oats, rolled, uncooked'],
+    ]),
+    'Food details'
+  );
+  XLSX.writeFile(detailsWorkbook, path.join(dir, 'AFCD Release 3 - Food Details.xlsx'));
+
+  const nutrientWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    nutrientWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AFCD Release 3'],
+      ['Nutrient profiles'],
+      [
+        'Public Food Key',
+        'Energy with dietary fibre, equated (kJ)',
+        'Protein',
+        'Carbohydrate',
+        'Total fat',
+      ],
+      ['F006143', 1564, 13.5, 68.7, 5.9],
+    ]),
+    'All solids & liquids per 100 g'
+  );
+  XLSX.writeFile(nutrientWorkbook, path.join(dir, 'AFCD Release 3 - Nutrient profiles.xlsx'));
+
+  const measuresWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(
+    measuresWorkbook,
+    XLSX.utils.aoa_to_sheet([
+      ['AUSNUT 2023 - Food measures'],
+      [],
+      [
+        'Survey ID',
+        'Public food key',
+        'Food name',
+        'Measure ID',
+        'Quantity',
+        'Descriptor 1',
+        'Descriptor 2',
+        'Descriptor 3',
+        'Descriptor 4',
+        'Gram amount',
+        'Volume',
+      ],
+      [12101016, 'F006143', 'Oats, rolled, uncooked', 41256, 1, 'density', 'dry/uncooked', '', '', 0.33, 0],
+      [12101016, 'F006143', 'Oats, rolled, uncooked', 41257, 1, 'tablespoon', '', '', '', 6.6, 20],
+      [12101016, 'F006143', 'Oats, rolled, uncooked', 41258, 1, 'cup', '', '', '', 82.5, 250],
+      [12101016, 'F006143', 'Oats, rolled, uncooked', 41259, 1, 'cup or sachet', 'single serve', '', '', 40, 0],
+    ]),
+    'AUSNUT 2023'
+  );
+  XLSX.writeFile(measuresWorkbook, path.join(dir, 'AUSNUT 2023 - Food measures.xlsx'));
+
+  const [source] = await testExports.parseAfcdDirectory(dir);
+  const [record] = source.stagingRecords;
+
+  assert.equal(record.providerId, 'F006143');
+  assert.equal(record.caloriesPer100g, 373.8);
+  assert.equal(record.servingSizeG, 82.5);
+  assert.equal(record.servingQuantity, 1);
+  assert.equal(record.servingUnit, 'cup');
+  assert.equal(record.servingDescription, '1 cup');
+  assert.deepEqual(record.servingWeightsG, { tbsp: 6.6, cup: 82.5 });
+  assert.equal(record.servingSizes.find((serving) => serving.grams === 40)?.unit, null);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory converts kJ-only energy fields', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
