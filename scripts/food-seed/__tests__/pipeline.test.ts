@@ -1339,7 +1339,8 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
         serving_size: '2 tbsp (30 g)',
         image_front_url: 'https://static.openfoodfacts.org/images/products/222/front_en.1.400.jpg',
         nutriments: {
-          'energy-kcal_100g': 590,
+          'energy-kcal_100g': 100,
+          'energy-kj_100g': 2707,
           proteins_100g: 26,
           carbohydrates_100g: 21,
           fat_100g: 51,
@@ -1357,12 +1358,16 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
     await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
   );
   const qaReport = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
+  const energyReport = JSON.parse(
+    await readFile(path.join(outputDir, 'foods.energy-discrepancies.json'), 'utf8')
+  );
 
   assert.equal(summary.brandedSeedCount, 1);
   assert.equal(summary.duplicateCount, 1);
   assert.equal(brandedFoods.length, 1);
   assert.equal(brandedFoods[0].id, 'off-2222222222222');
   assert.equal(brandedFoods[0].barcode, '2222222222222');
+  assert.equal(brandedFoods[0].caloriesPer100g, 646.99);
   assert.deepEqual(brandedFoods[0].barcodes, ['2222222222222', '1111111111111']);
   assert.equal(qaReport.counts.stagingRecords, 3);
   assert.deepEqual(qaReport.duplicateGroups, [
@@ -1372,6 +1377,10 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
       droppedIds: ['1111111111111'],
     },
   ]);
+  assert.equal(energyReport.count, 1);
+  assert.equal(energyReport.correctedCount, 1);
+  assert.equal(energyReport.discrepancies[0].providerId, '2222222222222');
+  assert.equal(energyReport.discrepancies[0].resolution, 'replaced_kcal_from_kj');
 
   await rm(rootDir, { recursive: true, force: true });
 });

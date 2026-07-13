@@ -65,8 +65,28 @@ export interface ParsedSource {
   inputFiles: string[];
   stagingRecords: SeedStagingRecord[];
   rejectedRows: RejectedRow[];
+  energyDiscrepancies?: EnergyDiscrepancy[];
   stagingRecordCount?: number;
   rejectedRowCount?: number;
+}
+
+export interface EnergyDiscrepancy {
+  provider: string;
+  providerId: string;
+  name: string;
+  kcalPer100g: number;
+  kjPer100g: number;
+  kjFromKcalPer100g: number;
+  estimatedKjFromMacrosPer100g: number | null;
+  resolution: 'kept_kcal' | 'replaced_kcal_from_kj' | 'unresolved';
+  cleanedCaloriesPer100g: number;
+}
+
+export interface EnergyDiscrepancyReport {
+  generatedAt: string;
+  count: number;
+  correctedCount: number;
+  discrepancies: EnergyDiscrepancy[];
 }
 
 export interface RejectedRow {

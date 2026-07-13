@@ -37,6 +37,7 @@ import {
 } from './shared.ts';
 import type {
   BuildSummary,
+  EnergyDiscrepancyReport,
   FoodSeedBuildArgs,
   ParsedSource,
   QADuplicateGroup,
@@ -201,6 +202,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   const rejectedRowsTruncated = sources.some(
     (source) => (source.rejectedRowCount ?? source.rejectedRows.length) > source.rejectedRows.length
   );
+  const energyDiscrepancies = sources.flatMap((source) => source.energyDiscrepancies ?? []);
   const genericStagingRecords = stagingRecords.filter((record) => record.provider !== 'openfoodfacts');
   const {
     records: dedupedGenericRecords,
@@ -246,6 +248,14 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
     rejectedRowsTruncated,
     duplicateGroups,
   };
+  const energyDiscrepancyReport: EnergyDiscrepancyReport = {
+    generatedAt,
+    count: energyDiscrepancies.length,
+    correctedCount: energyDiscrepancies.filter(
+      (discrepancy) => discrepancy.resolution === 'replaced_kcal_from_kj'
+    ).length,
+    discrepancies: energyDiscrepancies,
+  };
 
   await fs.mkdir(args.outputDir, { recursive: true });
   await diagnostics.milestone(
@@ -279,6 +289,11 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
     fs.writeFile(
       path.join(args.outputDir, 'foods.qa.json'),
       `${JSON.stringify(qaReport, null, 2)}\n`,
+      'utf8'
+    ),
+    fs.writeFile(
+      path.join(args.outputDir, 'foods.energy-discrepancies.json'),
+      `${JSON.stringify(energyDiscrepancyReport, null, 2)}\n`,
       'utf8'
     ),
   ]);

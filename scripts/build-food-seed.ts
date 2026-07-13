@@ -11,6 +11,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     `- foods.qa.json: ${summary.rejectedCount} rejected rows, ${summary.duplicateCount} duplicate groups\n`
   );
+  process.stdout.write('- foods.energy-discrepancies.json: kJ/kcal validation results\n');
 }
 
 main().catch((error: unknown) => {
