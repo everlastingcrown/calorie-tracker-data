@@ -26,6 +26,7 @@ import {
   preferredServingMeasure,
   servingWeightsFromSizes,
 } from './serving-sizes.ts';
+import { validateEnergyPair } from './energy-validation.ts';
 
 const USDA_NUTRIENTS = {
   calories: 1008,
@@ -709,6 +710,25 @@ export function openFoodFactsCalories(nutriments: Record<string, unknown>): numb
   );
 }
 
+export function openFoodFactsEnergyKj(nutriments: Record<string, unknown>): number | null {
+  return firstNumberValue(
+    nutriments['energy-kj_100g'],
+    nutriments.energy_100g,
+    nutriments['energy-kj'],
+    nutriments.energy,
+    nutriments.energy_value,
+    nutriments['energy-kj_value']
+  );
+}
+
+export function openFoodFactsEnergyKcal(nutriments: Record<string, unknown>): number | null {
+  return firstNumberValue(
+    nutriments['energy-kcal_100g'],
+    nutriments['energy-kcal'],
+    nutriments['energy-kcal_value']
+  );
+}
+
 export function parseOpenFoodFactsStructuredServing(product: Record<string, unknown>): ServingMeasure | null {
   const inputSets = objectValue(product.nutrition).input_sets;
   if (!Array.isArray(inputSets)) return null;
@@ -774,6 +794,7 @@ export async function parseOpenFoodFactsDirectory(
     inputFiles: files,
     stagingRecords: [],
     rejectedRows: [],
+    energyDiscrepancies: [],
     stagingRecordCount: 0,
     rejectedRowCount: 0,
   };
@@ -825,6 +846,29 @@ export async function parseOpenFoodFactsDirectory(
         nutriments = aggregatedNutriments;
         calories = openFoodFactsCalories(nutriments);
       }
+      const protein = firstNumberValue(nutriments.proteins_100g, nutriments.proteins);
+      const carbs = firstNumberValue(
+        nutriments.carbohydrates_100g,
+        nutriments.carbs_100g,
+        nutriments.carbohydrates,
+        nutriments.carbs
+      );
+      const fat = firstNumberValue(nutriments.fat_100g, nutriments.fat);
+      const normalizedName = normalizeDisplayName(rawName);
+      const energyValidation = validateEnergyPair({
+        provider: 'openfoodfacts',
+        providerId,
+        name: normalizedName,
+        kcalPer100g: openFoodFactsEnergyKcal(nutriments),
+        kjPer100g: openFoodFactsEnergyKj(nutriments),
+        proteinPer100g: protein,
+        carbsPer100g: carbs,
+        fatPer100g: fat,
+      });
+      calories = energyValidation.caloriesPer100g;
+      if (energyValidation.discrepancy) {
+        parsed.energyDiscrepancies?.push(energyValidation.discrepancy);
+      }
       const servingMeasures = [parseOpenFoodFactsServing(product)].filter(
         (value): value is ServingMeasure => value != null
       );
@@ -837,19 +881,14 @@ export async function parseOpenFoodFactsDirectory(
       const record = createStagingRecord({
         provider: 'openfoodfacts',
         providerId,
-        name: normalizeDisplayName(rawName),
+        name: normalizedName,
         brandName: stringValue(product.brands),
         countryCode: normalizeOpenFoodFactsCountryCode(product.countries_tags),
         region: 'global',
         caloriesPer100g: calories,
-        proteinPer100g: firstNumberValue(nutriments.proteins_100g, nutriments.proteins),
-        carbsPer100g: firstNumberValue(
-          nutriments.carbohydrates_100g,
-          nutriments.carbs_100g,
-          nutriments.carbohydrates,
-          nutriments.carbs
-        ),
-        fatPer100g: firstNumberValue(nutriments.fat_100g, nutriments.fat),
+        proteinPer100g: protein,
+        carbsPer100g: carbs,
+        fatPer100g: fat,
         servingSizeG: serving?.grams ?? null,
         servingQuantity: serving?.quantity ?? null,
         servingUnit: serving?.unit ?? null,

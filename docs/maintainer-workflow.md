@@ -13,7 +13,9 @@ sha256sum path/to/source-file
 4. Replace the manifest file entry's `sha256`. Omit `sha256` only for rolling sources that cannot provide durable immutable URLs; those files are downloaded fresh and their hashes are recorded in the generated artifact manifest.
 5. Run `npm run download:inputs` to verify pinned manifest hashes and populate `inputs/food-seed/`.
 6. Run `npm run build:food-seed` to generate artifacts.
-7. Inspect `generated/food-seed/foods.qa.json` for rejected rows or duplicate spikes.
+7. Inspect `generated/food-seed/foods.qa.json` for rejected rows or duplicate spikes, and
+   `generated/food-seed/foods.energy-discrepancies.json` for conflicting kJ/kcal values and any
+   macro-based corrections.
 8. Commit the manifest update and trigger the `Build food seed` workflow from GitHub Actions.
 
 ## Release Tags
