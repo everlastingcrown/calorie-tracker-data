@@ -151,6 +151,62 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory treats a labelled portion as one discrete serving', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '4061459224641',
+      product_name: 'Lactose Free Light Long Life Milk 99.9% Fat Free',
+      brands: 'Farmdale',
+      countries_tags: ['en:australia'],
+      serving_quantity: 250,
+      serving_size: '1 portion (250 ml)',
+      nutriments: {
+        'energy-kcal_100g': 34.8,
+        proteins_100g: 3.2,
+        carbohydrates_100g: 4.8,
+        fat_100g: 0.12,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(record.providerId, '4061459224641');
+  assert.equal(record.countryCode, 'au');
+  assert.equal(record.servingSizeG, 250);
+  assert.equal(record.servingQuantity, 1);
+  assert.equal(record.servingUnit, 'serving');
+  assert.equal(record.servingDescription, '1 portion (250 ml)');
+  assert.deepEqual(record.servingWeightsG, { serving: 250 });
+  assert.deepEqual(record.servingSizes, [
+    {
+      grams: 250,
+      quantity: 1,
+      unit: 'serving',
+      description: '1 portion (250 ml)',
+      source: 'off_label',
+      quality: 'medium',
+      confidence: 0.75,
+    },
+  ]);
+
+  assert.ok(record.caloriesPer100g != null);
+  assert.ok(record.proteinPer100g != null);
+  assert.ok(record.carbsPer100g != null);
+  assert.ok(record.fatPer100g != null);
+  const portionMultiplier = record.servingSizeG / 100;
+  assert.equal(record.caloriesPer100g * portionMultiplier, 87);
+  assert.equal(record.proteinPer100g * portionMultiplier, 8);
+  assert.equal(record.carbsPer100g * portionMultiplier, 12);
+  assert.equal(record.fatPer100g * portionMultiplier, 0.3);
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory prefers structured packaging serving grams', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
@@ -319,6 +375,10 @@ test('parseQuantityAndUnit recognizes additional discrete serving descriptors', 
   assert.deepEqual(testExports.parseQuantityAndUnit('1 can drained'), { quantity: 1, unit: 'can' });
   assert.deepEqual(testExports.parseQuantityAndUnit('1 bottle'), { quantity: 1, unit: 'bottle' });
   assert.deepEqual(testExports.parseQuantityAndUnit('1 packet'), { quantity: 1, unit: 'packet' });
+  assert.deepEqual(testExports.parseQuantityAndUnit('1 portion (250 ml)'), {
+    quantity: 1,
+    unit: 'serving',
+  });
   assert.deepEqual(testExports.parseQuantityAndUnit('2 servings'), { quantity: 2, unit: 'serving' });
 });
 

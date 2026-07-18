@@ -102,7 +102,7 @@ export function normalizeServingUnit(value: string | null | undefined): string |
   if (/\b(can|cans)\b/.test(normalized)) return 'can';
   if (/\b(bottle|bottles)\b/.test(normalized)) return 'bottle';
   if (/\b(packet|packets|package|packages|pkg|pkgs)\b/.test(normalized)) return 'packet';
-  if (/\b(serve|serves|serving|servings)\b/.test(normalized)) return 'serving';
+  if (/\b(portion|portions|serve|serves|serving|servings)\b/.test(normalized)) return 'serving';
   if (/\bsmall\b/.test(normalized)) return 'small';
   if (/\bmedium\b/.test(normalized)) return 'medium';
   if (/\blarge\b/.test(normalized)) return 'large';
@@ -116,7 +116,7 @@ export function parseQuantityAndUnit(value: string | null | undefined): {
 } | null {
   if (!value) return null;
   const pattern =
-    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz|milliliters?|millilitres?|ml|liters?|litres?|l|ounces?|oz|slices?|pieces?|bars?|cookies?|cans?|bottles?|packets?|packages?|pkgs?|serves?|servings?|small|medium|large)\b/i;
+    /(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*(cups?|c|tablespoons?|tbsp|tbs|tb|teaspoons?|tsp|ts|fluid ounces?|fl ounces?|fl oz|floz|milliliters?|millilitres?|ml|liters?|litres?|l|ounces?|oz|slices?|pieces?|bars?|cookies?|cans?|bottles?|packets?|packages?|pkgs?|portions?|serves?|servings?|small|medium|large)\b/i;
   const matched = value.match(pattern);
   if (!matched) return null;
 
