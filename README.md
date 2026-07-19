@@ -45,14 +45,26 @@ Generated artifacts include normalized data derived from the enabled public sour
 `npm run build:food-seed` writes:
 
 - `generated/food-seed/foods.seed.json`
+- `generated/food-seed/foods.seed.json.gz`
 - `generated/food-seed/foods-{country}.branded.json`
+- `generated/food-seed/foods-{country}.branded.json.gz`
 - `generated/food-seed/foods.manifest.json`
 - `generated/food-seed/foods.versions.json` (release workflow only)
 - `generated/food-seed/foods.qa.json`
 
 Generated files and downloaded inputs are ignored by git.
 
+The plain JSON files remain local build intermediates for QA. GitHub releases publish the gzip
+(`application/gzip`) seed files, using the `.json.gz` names recorded in the manifest and version
+index. Gzip is supported by the app runtime and substantially reduces these highly repetitive JSON
+payloads without changing the database schema after decompression.
+
 Each build manifest records semantic version, compatibility, UTC run time, immutable release tag,
 asset names, and explicit verification status. Apps should fetch `foods.versions.json` from the
 stable `food-seed-index` release and use `latestVerified`; an unverified run is listed for
 traceability but never changes that default pointer.
+
+Apps should cache a seed by `versionId`, download the asset URL from that version's `assets` object,
+and decompress according to its `compression` metadata before running the existing import. This
+keeps old cached uncompressed versions valid while ensuring a newly selected compressed version is
+stored separately; no migration of the on-device food database is required.

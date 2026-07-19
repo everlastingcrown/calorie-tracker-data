@@ -46,6 +46,7 @@ import type {
   SeedRelease,
   SeedStagingRecord,
 } from './types.ts';
+import { compressSeedAsset } from './compression.ts';
 export type { FoodSeedBuildArgs, SeedFood, SeedStagingRecord } from './types.ts';
 
 async function buildManifest(
@@ -273,18 +274,18 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
     },
     args.outputDir
   );
-  const brandedWrites = [...brandedRecordsByCountry.entries()].map(([countryCode, records]) =>
-    writeJsonArray(
-      path.join(args.outputDir, `foods-${countryCode}.branded.json`),
-      records,
-      (record) => buildSeedFood(record, generatedAt)
-    )
+  const genericSeedPath = path.join(args.outputDir, 'foods.seed.json');
+  const brandedSeedPaths = [...brandedRecordsByCountry.keys()].map((countryCode) =>
+    path.join(args.outputDir, `foods-${countryCode}.branded.json`)
+  );
+  const brandedWrites = [...brandedRecordsByCountry.entries()].map(
+    ([countryCode, records], index) =>
+      writeJsonArray(brandedSeedPaths[index], records, (record) =>
+        buildSeedFood(record, generatedAt)
+      )
   );
   await Promise.all([
-    writeJsonArray(
-      path.join(args.outputDir, 'foods.seed.json'),
-      genericSeedFoods
-    ),
+    writeJsonArray(genericSeedPath, genericSeedFoods),
     ...brandedWrites,
     fs.writeFile(
       path.join(args.outputDir, 'foods.manifest.json'),
@@ -302,6 +303,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
       'utf8'
     ),
   ]);
+  await Promise.all([genericSeedPath, ...brandedSeedPaths].map(compressSeedAsset));
   await diagnostics.milestone(
     'complete',
     {

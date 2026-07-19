@@ -110,11 +110,11 @@ jobs:
         run: |
           shopt -s nullglob
           release_assets=(
-            generated/food-seed/foods.seed.json
+            generated/food-seed/foods.seed.json.gz
             generated/food-seed/foods.manifest.json
             generated/food-seed/foods.versions.json
             generated/food-seed/foods.qa.json
-            generated/food-seed/foods-*.branded.json
+            generated/food-seed/foods-*.branded.json.gz
           )
 
           if ((${#release_assets[@]} < 5)); then

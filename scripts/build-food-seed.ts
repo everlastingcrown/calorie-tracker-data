@@ -17,8 +17,8 @@ async function main(): Promise<void> {
 
   process.stdout.write(`Built food seed artifacts in ${summary.outputDir}\n`);
   process.stdout.write(`- version: ${release.versionId} (${release.verified ? 'verified' : 'unverified'})\n`);
-  process.stdout.write(`- foods.seed.json: ${summary.genericSeedCount} generic foods\n`);
-  process.stdout.write(`- foods-{country}.branded.json: ${summary.brandedSeedCount} branded foods\n`);
+  process.stdout.write(`- foods.seed.json.gz: ${summary.genericSeedCount} generic foods\n`);
+  process.stdout.write(`- foods-{country}.branded.json.gz: ${summary.brandedSeedCount} branded foods\n`);
   process.stdout.write(`- foods.manifest.json: ${summary.sourceCount} sources\n`);
   process.stdout.write(
     `- foods.qa.json: ${summary.rejectedCount} rejected rows, ${summary.duplicateCount} duplicate groups\n`

@@ -1,4 +1,5 @@
 import type { SeedCompatibility, SeedRelease } from './types.ts';
+import { seedCompression } from './compression.ts';
 
 export interface SeedVersionIndex {
   schemaVersion: 1;
@@ -32,9 +33,10 @@ export function createSeedRelease(input: {
     runAt: input.runAt,
     verified: input.verified,
     releaseTag,
+    compression: seedCompression,
     assets: {
-      generic: 'foods.seed.json',
-      brandedTemplate: 'foods-{country}.branded.json',
+      generic: 'foods.seed.json.gz',
+      brandedTemplate: 'foods-{country}.branded.json.gz',
       manifest: 'foods.manifest.json',
     },
   };
@@ -54,9 +56,9 @@ export function updateSeedVersionIndex(
   const publishedRelease: SeedRelease = {
     ...release,
     assets: {
-      generic: `${baseUrl}/foods.seed.json`,
-      brandedTemplate: `${baseUrl}/foods-{country}.branded.json`,
-      manifest: `${baseUrl}/foods.manifest.json`,
+      generic: `${baseUrl}/${release.assets.generic}`,
+      brandedTemplate: `${baseUrl}/${release.assets.brandedTemplate}`,
+      manifest: `${baseUrl}/${release.assets.manifest}`,
     },
   };
   const versions = [

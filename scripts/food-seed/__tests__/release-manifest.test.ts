@@ -17,6 +17,13 @@ test('createSeedRelease combines semver and canonical run time into an immutable
   assert.equal(release.releaseTag, 'food-seed-v2.0.0-20260719T063000Z');
   assert.equal(release.compatibility, 'non-backward-compatible');
   assert.equal(release.verified, true);
+  assert.deepEqual(release.compression, {
+    codec: 'gzip',
+    mediaType: 'application/gzip',
+    fileExtension: '.gz',
+  });
+  assert.equal(release.assets.generic, 'foods.seed.json.gz');
+  assert.equal(release.assets.brandedTemplate, 'foods-{country}.branded.json.gz');
 });
 
 test('createSeedRelease rejects malformed semantic versions and run timestamps', () => {
@@ -64,6 +71,8 @@ test('unverified releases never replace the latest verified default', () => {
     verified.versionId,
   ]);
   assert.match(updated.versions[0].assets.manifest, /food-seed-v1\.1\.0/);
+  assert.match(updated.versions[0].assets.generic, /foods\.seed\.json\.gz$/);
+  assert.match(updated.versions[0].assets.brandedTemplate, /foods-\{country\}\.branded\.json\.gz$/);
 });
 
 test('a verified promotion becomes the default and replaces a matching unverified entry', () => {
