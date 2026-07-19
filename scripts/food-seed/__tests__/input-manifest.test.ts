@@ -15,8 +15,8 @@ test('readFoodSeedInputManifest validates schema and hashes', async () => {
   await writeFile(
     manifestPath,
     JSON.stringify({
-      schemaVersion: 1,
-      releaseTag: 'food-seed-2026-04-30',
+      schemaVersion: 2,
+      seedVersion: { semver: '2.0.0', compatibility: 'non-backward-compatible' },
       sources: [
         {
           id: 'usda-foundation',
@@ -45,7 +45,7 @@ test('readFoodSeedInputManifest validates schema and hashes', async () => {
   );
 
   const manifest = await readFoodSeedInputManifest(manifestPath);
-  assert.equal(manifest.releaseTag, 'food-seed-2026-04-30');
+  assert.equal(manifest.seedVersion.semver, '2.0.0');
   assert.equal(manifest.sources[0].license.name, 'CC0 1.0 Universal');
   assert.equal(manifest.sources[0].files[0].extract, 'zip');
 
@@ -78,8 +78,8 @@ test('downloadManifestInputs writes verified manifest files to source output dir
 
   await downloadManifestInputs(
     {
-      schemaVersion: 1,
-      releaseTag: 'food-seed-test',
+      schemaVersion: 2,
+      seedVersion: { semver: '1.0.0', compatibility: 'compatible' },
       sources: [
         {
           id: 'fixture-source',
@@ -124,8 +124,8 @@ test('downloadManifestInputs refreshes files without pinned hashes', async () =>
   const outputDir = path.join(dir, 'inputs');
 
   const createManifest = (contents: string) => ({
-    schemaVersion: 1 as const,
-    releaseTag: 'food-seed-test',
+    schemaVersion: 2 as const,
+    seedVersion: { semver: '1.0.0', compatibility: 'compatible' as const },
     sources: [
       {
         id: 'fixture-source',
@@ -173,8 +173,8 @@ test('readFoodSeedInputManifest requires source license details', async () => {
   await writeFile(
     manifestPath,
     JSON.stringify({
-      schemaVersion: 1,
-      releaseTag: 'food-seed-test',
+      schemaVersion: 2,
+      seedVersion: { semver: '1.0.0', compatibility: 'compatible' },
       sources: [
         {
           id: 'fixture-source',
@@ -206,8 +206,8 @@ test('readFoodSeedInputManifest requires source license details', async () => {
 
 test('buildFoodSeedReleaseNotes includes enabled source licenses and skips disabled sources', () => {
   const notes = buildFoodSeedReleaseNotes({
-    schemaVersion: 1,
-    releaseTag: 'food-seed-test',
+    schemaVersion: 2,
+    seedVersion: { semver: '1.0.0', compatibility: 'compatible' },
     sources: [
       {
         id: 'enabled-source',

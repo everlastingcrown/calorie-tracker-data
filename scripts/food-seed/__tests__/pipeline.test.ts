@@ -5,10 +5,18 @@ import path from 'node:path';
 import test from 'node:test';
 import * as XLSXModule from 'xlsx';
 import { testExports } from '../pipeline.ts';
+import { createSeedRelease } from '../release-manifest.ts';
 
 type XlsxModule = typeof import('xlsx');
 const XLSX = ((XLSXModule as XlsxModule & { default?: XlsxModule }).default ??
   XLSXModule) as XlsxModule;
+
+const testRelease = createSeedRelease({
+  semver: '1.0.0',
+  compatibility: 'compatible',
+  runAt: '2026-07-19T06:00:00.000Z',
+  verified: false,
+});
 
 function createDedupeRecord(input: {
   providerId: string;
@@ -1312,6 +1320,7 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
     usdaDir,
     openFoodFactsDir: offDir,
     outputDir,
+    release: testRelease,
   });
   const genericFoods = JSON.parse(await readFile(path.join(outputDir, 'foods.seed.json'), 'utf8'));
   const brandedFoods = JSON.parse(
@@ -1342,6 +1351,8 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
     },
   ]);
   assert.equal(manifest.stagingSchemaVersion, 2);
+  assert.equal(manifest.release.versionId, '1.0.0+20260719T060000Z');
+  assert.equal(manifest.release.verified, false);
   assert.equal(manifest.totals.genericSeedCount, 1);
   assert.equal(manifest.totals.brandedSeedCount, 1);
 
@@ -1413,6 +1424,7 @@ test('buildFoodSeedArtifacts dedupes Open Food Facts rows while streaming', asyn
     usdaDir,
     openFoodFactsDir: offDir,
     outputDir,
+    release: testRelease,
   });
   const brandedFoods = JSON.parse(
     await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
@@ -1509,6 +1521,7 @@ test('buildFoodSeedArtifacts fuzzy dedupes Open Food Facts rows while streaming'
     usdaDir,
     openFoodFactsDir: offDir,
     outputDir,
+    release: testRelease,
   });
   const brandedFoods = JSON.parse(
     await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')

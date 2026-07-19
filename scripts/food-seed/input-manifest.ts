@@ -28,8 +28,11 @@ export interface FoodSeedManifestSource {
 }
 
 export interface FoodSeedInputManifest {
-  schemaVersion: 1;
-  releaseTag: string;
+  schemaVersion: 2;
+  seedVersion: {
+    semver: string;
+    compatibility: 'compatible' | 'non-backward-compatible';
+  };
   sources: FoodSeedManifestSource[];
 }
 
@@ -39,8 +42,20 @@ export async function readFoodSeedInputManifest(
   const raw = await fs.readFile(manifestPath, 'utf8');
   const manifest = JSON.parse(raw) as FoodSeedInputManifest;
 
-  if (manifest.schemaVersion !== 1) {
+  if (manifest.schemaVersion !== 2) {
     throw new Error(`Unsupported manifest schema version: ${manifest.schemaVersion}`);
+  }
+
+  if (!/^\d+\.\d+\.\d+$/.test(manifest.seedVersion?.semver)) {
+    throw new Error('Manifest seedVersion.semver must use MAJOR.MINOR.PATCH.');
+  }
+  if (
+    manifest.seedVersion.compatibility !== 'compatible' &&
+    manifest.seedVersion.compatibility !== 'non-backward-compatible'
+  ) {
+    throw new Error(
+      'Manifest seedVersion.compatibility must be compatible or non-backward-compatible.'
+    );
   }
 
   for (const source of manifest.sources) {

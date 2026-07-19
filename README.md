@@ -20,7 +20,7 @@ npm run type-check
 
 5. Commit the manifest/code changes.
 6. Trigger **Build food seed** from GitHub Actions.
-7. Confirm the workflow publishes `foods.seed.json`, `foods-{country}.branded.json`, `foods.manifest.json`, and `foods.qa.json` to the release tag from `manifest.releaseTag`.
+7. Choose whether to explicitly promote the run as verified, then confirm the workflow publishes the immutable versioned release and updates `foods.versions.json` on the `food-seed-index` release.
 
 ## Inputs
 
@@ -47,6 +47,12 @@ Generated artifacts include normalized data derived from the enabled public sour
 - `generated/food-seed/foods.seed.json`
 - `generated/food-seed/foods-{country}.branded.json`
 - `generated/food-seed/foods.manifest.json`
+- `generated/food-seed/foods.versions.json` (release workflow only)
 - `generated/food-seed/foods.qa.json`
 
 Generated files and downloaded inputs are ignored by git.
+
+Each build manifest records semantic version, compatibility, UTC run time, immutable release tag,
+asset names, and explicit verification status. Apps should fetch `foods.versions.json` from the
+stable `food-seed-index` release and use `latestVerified`; an unverified run is listed for
+traceability but never changes that default pointer.

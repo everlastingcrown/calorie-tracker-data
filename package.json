@@ -8,6 +8,7 @@
     "build:food-seed": "node --experimental-strip-types scripts/build-food-seed.ts --usda-dir ./inputs/food-seed/usda --afcd-dir ./inputs/food-seed/afcd-release-3 --openfoodfacts-dir ./inputs/food-seed/openfoodfacts --output-dir ./generated/food-seed",
     "release:tag": "node --experimental-strip-types scripts/create-release-tag.ts",
     "release:notes": "node --experimental-strip-types scripts/create-release-notes.ts",
+    "release:index": "node --experimental-strip-types scripts/update-release-index.ts",
     "test": "node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "type-check": "tsc --noEmit"
   },
