@@ -22,6 +22,19 @@ sha256sum path/to/source-file
 
 The workflow creates an immutable tag from `seedVersion.semver` and the UTC run timestamp. The dispatch form requires an explicit promotion choice. Select verified only after inspecting QA; unverified releases remain discoverable but cannot become `latestVerified`. The stable `food-seed-index` release publishes `foods.versions.json` for app discovery.
 
+## Seed Asset Compression
+
+The build creates gzip-compressed generic and country-branded seed assets at compression level 9.
+Plain JSON remains in the ignored build directory for QA and round-trip checks, but the release
+workflow publishes only `foods.seed.json.gz` and `foods-{country}.branded.json.gz`. The release
+manifest and stable version index identify the codec as `gzip`, the media type as
+`application/gzip`, and point their asset fields at the compressed files.
+
+Compression is a packaging boundary: consumers decompress the selected asset and pass the original
+JSON bytes to their existing importer. Cache entries should be keyed by the immutable `versionId`.
+That allows an old uncompressed cached seed and a new compressed seed to coexist, and avoids any
+schema or on-device database migration.
+
 ## Source Licenses
 
 Before enabling or updating a source, verify the source license and attribution requirements from the publisher, then update the source `license` block in `inputs/manifest.json`. The workflow runs `npm run release:notes` and uses the generated body for the GitHub Release description, so license notes in the manifest are published with the artifacts.

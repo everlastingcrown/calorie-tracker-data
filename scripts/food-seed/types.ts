@@ -17,6 +17,11 @@ export interface SeedRelease {
   runAt: string;
   verified: boolean;
   releaseTag: string;
+  compression: {
+    codec: 'gzip';
+    mediaType: 'application/gzip';
+    fileExtension: '.gz';
+  };
   assets: {
     generic: string;
     brandedTemplate: string;

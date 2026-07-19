@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { gunzipSync } from 'node:zlib';
 import * as XLSXModule from 'xlsx';
 import { testExports } from '../pipeline.ts';
 import { createSeedRelease } from '../release-manifest.ts';
@@ -1327,6 +1328,8 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
     await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
   );
   const manifest = JSON.parse(await readFile(path.join(outputDir, 'foods.manifest.json'), 'utf8'));
+  const compressedGeneric = await readFile(path.join(outputDir, 'foods.seed.json.gz'));
+  const compressedBranded = await readFile(path.join(outputDir, 'foods-us.branded.json.gz'));
 
   assert.equal(summary.genericSeedCount, 1);
   assert.equal(summary.brandedSeedCount, 1);
@@ -1353,6 +1356,11 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(manifest.stagingSchemaVersion, 2);
   assert.equal(manifest.release.versionId, '1.0.0+20260719T060000Z');
   assert.equal(manifest.release.verified, false);
+  assert.equal(manifest.release.compression.codec, 'gzip');
+  assert.deepEqual(JSON.parse(gunzipSync(compressedGeneric).toString('utf8')), genericFoods);
+  assert.deepEqual(JSON.parse(gunzipSync(compressedBranded).toString('utf8')), brandedFoods);
+  assert.ok(compressedGeneric.byteLength < Buffer.byteLength(JSON.stringify(genericFoods)));
+  assert.ok(compressedBranded.byteLength < Buffer.byteLength(JSON.stringify(brandedFoods)));
   assert.equal(manifest.totals.genericSeedCount, 1);
   assert.equal(manifest.totals.brandedSeedCount, 1);
 
