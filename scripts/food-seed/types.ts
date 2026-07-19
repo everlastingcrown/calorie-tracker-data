@@ -5,6 +5,23 @@ export interface FoodSeedBuildArgs {
   afcdDir?: string;
   openFoodFactsDir: string;
   outputDir: string;
+  release: SeedRelease;
+}
+
+export type SeedCompatibility = 'compatible' | 'non-backward-compatible';
+
+export interface SeedRelease {
+  versionId: string;
+  semver: string;
+  compatibility: SeedCompatibility;
+  runAt: string;
+  verified: boolean;
+  releaseTag: string;
+  assets: {
+    generic: string;
+    brandedTemplate: string;
+    manifest: string;
+  };
 }
 
 export interface SeedFood {
@@ -108,7 +125,9 @@ export interface DedupeGroup {
 }
 
 export interface SeedManifest {
+  schemaVersion: 1;
   generatedAt: string;
+  release: SeedRelease;
   stagingSchemaVersion: 2;
   sources: {
     sourceId: string;

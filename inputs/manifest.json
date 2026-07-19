@@ -1,6 +1,9 @@
 {
-  "schemaVersion": 1,
-  "releaseTag": "food-seed-daily-latest",
+  "schemaVersion": 2,
+  "seedVersion": {
+    "semver": "2.0.0",
+    "compatibility": "non-backward-compatible"
+  },
   "sources": [
     {
       "id": "usda-foundation-2026-04-30",

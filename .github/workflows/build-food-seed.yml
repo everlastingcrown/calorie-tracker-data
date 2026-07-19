@@ -2,6 +2,16 @@ name: Build food seed
 
 on:
   workflow_dispatch:
+    inputs:
+      promote_verified:
+        description: Mark this build verified and eligible as the app default
+        required: true
+        type: boolean
+        default: false
+
+concurrency:
+  group: food-seed-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -51,9 +61,19 @@ jobs:
       - name: Download source inputs
         run: npm run download:inputs
 
+      - name: Resolve release metadata
+        id: release_metadata
+        env:
+          PROMOTE_VERIFIED: ${{ inputs.promote_verified }}
+        run: |
+          echo "run_at=$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" >> "$GITHUB_OUTPUT"
+          echo "verified=$PROMOTE_VERIFIED" >> "$GITHUB_OUTPUT"
+
       - name: Build food seed artifacts
         env:
           NODE_OPTIONS: --max-old-space-size=12288
+          FOOD_SEED_RUN_AT: ${{ steps.release_metadata.outputs.run_at }}
+          FOOD_SEED_VERIFIED: ${{ steps.release_metadata.outputs.verified }}
         run: npm run build:food-seed
 
       - name: Check runner storage
@@ -61,10 +81,27 @@ jobs:
 
       - name: Resolve release tag
         id: release_tag
+        env:
+          FOOD_SEED_RUN_AT: ${{ steps.release_metadata.outputs.run_at }}
+          FOOD_SEED_VERIFIED: ${{ steps.release_metadata.outputs.verified }}
         run: echo "tag=$(npm run --silent release:tag)" >> "$GITHUB_OUTPUT"
 
       - name: Generate release notes
         run: npm run --silent release:notes > release-notes.md
+
+      - name: Update version index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .release-index
+          gh release download food-seed-index \
+            --pattern foods.versions.json \
+            --dir .release-index || true
+          npm run --silent release:index -- \
+            generated/food-seed/foods.manifest.json \
+            .release-index/foods.versions.json \
+            generated/food-seed/foods.versions.json \
+            "$GITHUB_REPOSITORY"
 
       - name: Publish GitHub release
         env:
@@ -75,18 +112,33 @@ jobs:
           release_assets=(
             generated/food-seed/foods.seed.json
             generated/food-seed/foods.manifest.json
+            generated/food-seed/foods.versions.json
             generated/food-seed/foods.qa.json
             generated/food-seed/foods-*.branded.json
           )
 
-          if ((${#release_assets[@]} < 4)); then
+          if ((${#release_assets[@]} < 5)); then
             echo "Expected core artifacts plus at least one branded country artifact."
             find generated/food-seed -maxdepth 1 -type f -print
             exit 1
           fi
 
-          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
           gh release create "$RELEASE_TAG" \
             --title "$RELEASE_TAG" \
             --notes-file release-notes.md \
             "${release_assets[@]}"
+
+      - name: Publish stable version index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view food-seed-index >/dev/null 2>&1; then
+            gh release upload food-seed-index \
+              --clobber \
+              generated/food-seed/foods.versions.json
+          else
+            gh release create food-seed-index \
+              --title "Food seed version index" \
+              --notes "Machine-readable index. Only entries with verified=true are eligible as defaults." \
+              generated/food-seed/foods.versions.json
+          fi

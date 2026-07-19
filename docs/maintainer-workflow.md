@@ -2,7 +2,7 @@
 
 ## Updating Source Inputs
 
-1. Change the relevant source `url`, `version`, `releaseTag`, and `license` metadata in `inputs/manifest.json`.
+1. Change the relevant source `url`, `version`, and `license` metadata in `inputs/manifest.json`. Update `seedVersion.semver` and its explicit compatibility indicator when the output contract changes.
 2. Download the new file outside git.
 3. Compute its SHA256:
 
@@ -20,7 +20,7 @@ sha256sum path/to/source-file
 
 ## Release Tags
 
-The workflow uses `manifest.releaseTag` as the GitHub Release tag and title. Keep the tag concise, for example `food-seed-2026-04-30`, and change it whenever source data versions change so releases remain traceable to input versions.
+The workflow creates an immutable tag from `seedVersion.semver` and the UTC run timestamp. The dispatch form requires an explicit promotion choice. Select verified only after inspecting QA; unverified releases remain discoverable but cannot become `latestVerified`. The stable `food-seed-index` release publishes `foods.versions.json` for app discovery.
 
 ## Source Licenses
 

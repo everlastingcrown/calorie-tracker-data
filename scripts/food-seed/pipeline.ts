@@ -43,6 +43,7 @@ import type {
   QADuplicateGroup,
   SeedManifest,
   SeedQAReport,
+  SeedRelease,
   SeedStagingRecord,
 } from './types.ts';
 export type { FoodSeedBuildArgs, SeedFood, SeedStagingRecord } from './types.ts';
@@ -51,7 +52,8 @@ async function buildManifest(
   sources: ParsedSource[],
   seedCounts: { generic: number; branded: number },
   duplicateGroups: QADuplicateGroup[],
-  generatedAt: string
+  generatedAt: string,
+  release: SeedRelease
 ): Promise<SeedManifest> {
   const getManifestFileInfo = createManifestFileCollector();
 
@@ -77,7 +79,9 @@ async function buildManifest(
   );
 
   return {
+    schemaVersion: 1,
     generatedAt,
+    release,
     stagingSchemaVersion: 2,
     sources: manifestSources,
     totals: {
@@ -119,8 +123,8 @@ function groupBrandedRecordsByCountry(
   return new Map([...groups.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }
 
-export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
-  const options: Partial<FoodSeedBuildArgs> = {
+export function parseBuildArgs(args: string[]): Omit<FoodSeedBuildArgs, 'release'> {
+  const options: Partial<Omit<FoodSeedBuildArgs, 'release'>> = {
     outputDir: path.join(process.cwd(), 'generated', 'food-seed'),
   };
 
@@ -155,11 +159,11 @@ export function parseBuildArgs(args: string[]): FoodSeedBuildArgs {
     );
   }
 
-  return options as FoodSeedBuildArgs;
+  return options as Omit<FoodSeedBuildArgs, 'release'>;
 }
 
 export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<BuildSummary> {
-  const generatedAt = new Date().toISOString();
+  const generatedAt = args.release.runAt;
   const diagnostics = new PipelineDiagnostics();
   const brandedAccumulator = createDedupeAccumulator();
   await diagnostics.milestone('start', {}, args.outputDir);
@@ -232,7 +236,8 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
     sources,
     { generic: genericSeedFoods.length, branded: dedupedBrandedRecords.length },
     duplicateGroups,
-    generatedAt
+    generatedAt,
+    args.release
   );
   const qaReport: SeedQAReport = {
     generatedAt,
