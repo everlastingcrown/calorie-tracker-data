@@ -68,3 +68,21 @@ Apps should cache a seed by `versionId`, download the asset URL from that versio
 and decompress according to its `compression` metadata before running the existing import. This
 keeps old cached uncompressed versions valid while ensuring a newly selected compressed version is
 stored separately; no migration of the on-device food database is required.
+
+## Food Quality
+
+Every emitted food has an app-facing `quality` value of `high`, `medium`, or `low`. Assignment is
+deterministic and uses source provenance plus core nutrition completeness (calories, protein,
+carbohydrate, and fat):
+
+- USDA Foundation and AFCD generic foods are `high` when all four values are present, otherwise
+  `medium`.
+- USDA SR Legacy generic foods are `medium` when all four values are present, otherwise `low`.
+- Open Food Facts branded/community-contributed foods are `medium` when all four values plus both a
+  brand and barcode are present, otherwise `low`.
+
+The pipeline does not generate local user-created or quick-add foods; those remain app-owned and
+must not be assigned a guessed quality by seed consumers. The numeric `qualityScore` remains in the
+seed for backward compatibility and dedupe ranking, but it is not the app-facing quality contract.
+`foods.qa.json` reports counts for every quality level and a `missing` count, which is always zero
+for successfully emitted rows.

@@ -1,4 +1,5 @@
 export type Provider = 'usda_foundation' | 'usda_sr_legacy' | 'afcd' | 'openfoodfacts';
+export type FoodQuality = 'high' | 'medium' | 'low';
 
 export interface FoodSeedBuildArgs {
   usdaDir: string;
@@ -49,6 +50,7 @@ export interface SeedFood {
   source: 'usda' | 'afcd' | 'openfoodfacts' | 'user' | 'quick_add';
   license: string;
   sourceUpdatedAt: string | null;
+  quality: FoodQuality;
   qualityScore: number;
   createdAt: string;
 }
@@ -166,6 +168,12 @@ export interface SeedQAReport {
     brandedFoods: number;
     rejectedRows: number;
     duplicateGroups: number;
+    quality: {
+      high: number;
+      medium: number;
+      low: number;
+      missing: number;
+    };
   };
   rejectedRows: RejectedRow[];
   rejectedRowsTruncated: boolean;
