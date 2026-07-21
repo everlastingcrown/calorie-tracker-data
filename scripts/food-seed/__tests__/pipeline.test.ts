@@ -943,6 +943,7 @@ test('buildSeedFood uses stable off-prefixed IDs for Open Food Facts', () => {
   assert.equal(food.countryCode, 'us');
   assert.deepEqual(food.barcodes, ['1234567890123']);
   assert.equal(food.license, 'ODbL');
+  assert.equal(food.quality, 'medium');
   assert.equal(food.qualityScore, 64);
 });
 
@@ -1341,6 +1342,7 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].source, 'openfoodfacts');
   assert.equal(brandedFoods[0].brandName, 'Example Brand');
   assert.equal(brandedFoods[0].countryCode, 'us');
+  assert.equal(brandedFoods[0].quality, 'medium');
   assert.equal(brandedFoods[0].qualityScore, 80);
   assert.deepEqual(brandedFoods[0].servingSizes, [
     {
@@ -1363,6 +1365,12 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.ok(compressedBranded.byteLength < Buffer.byteLength(JSON.stringify(brandedFoods)));
   assert.equal(manifest.totals.genericSeedCount, 1);
   assert.equal(manifest.totals.brandedSeedCount, 1);
+
+  const emittedFoods = [...genericFoods, ...brandedFoods];
+  assert.ok(emittedFoods.every((food) => ['high', 'medium', 'low'].includes(food.quality)));
+
+  const qa = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
+  assert.deepEqual(qa.counts.quality, { high: 1, medium: 1, low: 0, missing: 0 });
 
   await rm(rootDir, { recursive: true, force: true });
 });

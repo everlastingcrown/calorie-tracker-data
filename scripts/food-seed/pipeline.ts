@@ -47,6 +47,7 @@ import type {
   SeedStagingRecord,
 } from './types.ts';
 import { compressSeedAsset } from './compression.ts';
+import { assignFoodQuality } from './quality.ts';
 export type { FoodSeedBuildArgs, SeedFood, SeedStagingRecord } from './types.ts';
 
 async function buildManifest(
@@ -108,6 +109,16 @@ function countRejectedRows(sources: ParsedSource[]): number {
     (sum, source) => sum + (source.rejectedRowCount ?? source.rejectedRows.length),
     0
   );
+}
+
+function countFoodQuality(recordGroups: SeedStagingRecord[][]): SeedQAReport['counts']['quality'] {
+  const counts = { high: 0, medium: 0, low: 0, missing: 0 };
+  for (const records of recordGroups) {
+    for (const record of records) {
+      counts[assignFoodQuality(record)] += 1;
+    }
+  }
+  return counts;
 }
 
 function groupBrandedRecordsByCountry(
@@ -249,6 +260,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
       brandedFoods: dedupedBrandedRecords.length,
       rejectedRows: rejectedRowCount,
       duplicateGroups: duplicateGroups.length,
+      quality: countFoodQuality([dedupedGenericRecords, dedupedBrandedRecords]),
     },
     rejectedRows,
     rejectedRowsTruncated,

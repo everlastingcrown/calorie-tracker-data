@@ -12,6 +12,7 @@ import type {
   ServingSize,
   ServingMeasure,
 } from './types.ts';
+import { assignFoodQuality } from './quality.ts';
 
 const COMMON_SERVING_UNITS = [
   'cup',
@@ -502,6 +503,7 @@ export function buildSeedFood(record: SeedStagingRecord, generatedAt: string): S
     source,
     license: record.license,
     sourceUpdatedAt: record.sourceUpdatedAt,
+    quality: assignFoodQuality(record),
     qualityScore: record.qualityScore,
     createdAt: generatedAt,
   };
