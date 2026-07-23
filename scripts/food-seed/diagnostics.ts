@@ -18,6 +18,7 @@ export interface PipelineProgressCounts {
   brandedGroups?: number;
   duplicateGroups?: number;
   emittedFoods?: number;
+  nutrientCorrections?: number;
 }
 
 export class PipelineDiagnostics {
@@ -88,6 +89,10 @@ export function sourceCounts(sources: ParsedSource[]): PipelineProgressCounts {
     ),
     rejectedRows: sources.reduce(
       (sum, source) => sum + (source.rejectedRowCount ?? source.rejectedRows.length),
+      0
+    ),
+    nutrientCorrections: sources.reduce(
+      (sum, source) => sum + (source.nutrientCorrectionCount ?? 0),
       0
     ),
   };

@@ -680,13 +680,108 @@ export function openFoodFactsAggregatedNutriments(product: Record<string, unknow
   const nutrition = objectValue(product.nutrition);
   const aggregatedSet = objectValue(nutrition.aggregated_set);
   const nutrients = objectValue(aggregatedSet.nutrients);
+  const per = stringValue(aggregatedSet.per)?.toLowerCase() === 'serving' ? 'serving' : '100g';
   const nutriments: Record<string, unknown> = {};
 
   for (const [key, nutrient] of Object.entries(nutrients)) {
-    nutriments[key] = objectValue(nutrient).value;
+    const nutrientValue = objectValue(nutrient);
+    nutriments[`${key}_${per}`] = nutrientValue.value ?? nutrientValue.value_computed;
+    nutriments[`${key}_unit`] = nutrientValue.unit;
   }
 
   return nutriments;
+}
+
+type OpenFoodFactsNutrientKind = 'mass' | 'kcal' | 'kj';
+
+interface OpenFoodFactsNutrientResult {
+  value: number | null;
+  warnings: string[];
+}
+
+function openFoodFactsUnitMultiplier(
+  kind: OpenFoodFactsNutrientKind,
+  rawUnit: unknown
+): number | null {
+  const unit = stringValue(rawUnit)?.toLowerCase().replace(/μ/g, 'µ') ?? null;
+  if (kind === 'mass') {
+    if (unit == null || unit === 'g') return 1;
+    if (unit === 'mg') return 0.001;
+    if (unit === 'µg' || unit === 'ug' || unit === 'mcg') return 0.000001;
+    if (unit === 'kg') return 1000;
+    return null;
+  }
+  if (kind === 'kcal') {
+    if (unit == null || unit === 'kcal' || unit === 'cal') return 1;
+    if (unit === 'kj') return 1 / 4.184;
+    return null;
+  }
+  if (unit == null || unit === 'kj') return 1;
+  if (unit === 'kcal' || unit === 'cal') return 4.184;
+  return null;
+}
+
+function openFoodFactsNutrientPer100g(
+  product: Record<string, unknown>,
+  nutriments: Record<string, unknown>,
+  names: string[],
+  kind: OpenFoodFactsNutrientKind,
+  servingSizeG: number | null
+): OpenFoodFactsNutrientResult {
+  const nutritionDataPer = stringValue(product.nutrition_data_per)?.toLowerCase();
+  const maximum = kind === 'mass' ? 100 : kind === 'kcal' ? 9_000 : 9_000 * 4.184;
+
+  for (const name of names) {
+    const enteredPer = nutritionDataPer === 'serving' ? 'serving' : '100g';
+    const candidates = [
+      { field: `${name}_100g`, per: '100g' },
+      { field: `${name}_serving`, per: 'serving' },
+      { field: name, per: enteredPer },
+      { field: `${name}_value`, per: enteredPer },
+    ] as const;
+
+    for (const candidate of candidates) {
+      const rawValue = numberValue(nutriments[candidate.field]);
+      if (rawValue == null) continue;
+
+      const multiplier = openFoodFactsUnitMultiplier(kind, nutriments[`${name}_unit`]);
+      if (multiplier == null) {
+        return {
+          value: null,
+          warnings: [`dropped ${candidate.field}: unsupported unit`],
+        };
+      }
+      if (candidate.per === 'serving' && servingSizeG == null) {
+        return {
+          value: null,
+          warnings: [`dropped ${candidate.field}: serving grams unavailable`],
+        };
+      }
+
+      const perMultiplier = candidate.per === 'serving' ? 100 / (servingSizeG as number) : 1;
+      const corrected = multiplier !== 1 || perMultiplier !== 1;
+      const normalized = corrected
+        ? roundNumber(rawValue * multiplier * perMultiplier)
+        : rawValue;
+      if (normalized < 0 || normalized > maximum) {
+        return {
+          value: null,
+          warnings: [
+            `dropped ${candidate.field}: normalized value ${normalized} is outside 0..${maximum}`,
+          ],
+        };
+      }
+
+      return {
+        value: normalized,
+        warnings: corrected
+          ? [`normalized ${candidate.field} from ${rawValue} to ${normalized} per 100g`]
+          : [],
+      };
+    }
+  }
+
+  return { value: null, warnings: [] };
 }
 
 export function openFoodFactsCalories(nutriments: Record<string, unknown>): number | null {
@@ -797,6 +892,7 @@ export async function parseOpenFoodFactsDirectory(
     energyDiscrepancies: [],
     stagingRecordCount: 0,
     rejectedRowCount: 0,
+    nutrientCorrectionCount: 0,
   };
 
   let rowsRead = 0;
@@ -806,6 +902,7 @@ export async function parseOpenFoodFactsDirectory(
       rowsRead,
       stagingRecords: parsed.stagingRecordCount ?? parsed.stagingRecords.length,
       rejectedRows: parsed.rejectedRowCount ?? parsed.rejectedRows.length,
+      nutrientCorrections: parsed.nutrientCorrectionCount ?? 0,
     });
   };
 
@@ -838,42 +935,91 @@ export async function parseOpenFoodFactsDirectory(
         continue;
       }
 
-      const legacyNutriments = objectValue(product.nutriments);
-      const aggregatedNutriments = openFoodFactsAggregatedNutriments(product);
-      let nutriments = legacyNutriments;
-      let calories = openFoodFactsCalories(nutriments);
-      if (calories == null) {
-        nutriments = aggregatedNutriments;
-        calories = openFoodFactsCalories(nutriments);
-      }
-      const protein = firstNumberValue(nutriments.proteins_100g, nutriments.proteins);
-      const carbs = firstNumberValue(
-        nutriments.carbohydrates_100g,
-        nutriments.carbs_100g,
-        nutriments.carbohydrates,
-        nutriments.carbs
-      );
-      const fat = firstNumberValue(nutriments.fat_100g, nutriments.fat);
-      const normalizedName = normalizeDisplayName(rawName);
-      const energyValidation = validateEnergyPair({
-        provider: 'openfoodfacts',
-        providerId,
-        name: normalizedName,
-        kcalPer100g: openFoodFactsEnergyKcal(nutriments),
-        kjPer100g: openFoodFactsEnergyKj(nutriments),
-        proteinPer100g: protein,
-        carbsPer100g: carbs,
-        fatPer100g: fat,
-      });
-      calories = energyValidation.caloriesPer100g;
-      if (energyValidation.discrepancy) {
-        parsed.energyDiscrepancies?.push(energyValidation.discrepancy);
-      }
       const servingMeasures = [parseOpenFoodFactsServing(product)].filter(
         (value): value is ServingMeasure => value != null
       );
       const serving = chooseBestServing(servingMeasures);
       const servingSizes = buildServingSizes(servingMeasures, 'off_label');
+      const servingSizeG = serving?.grams ?? null;
+      const legacyNutriments = objectValue(product.nutriments);
+      const aggregatedNutriments = openFoodFactsAggregatedNutriments(product);
+      let nutriments = legacyNutriments;
+      let kcal = openFoodFactsNutrientPer100g(
+        product,
+        nutriments,
+        ['energy-kcal'],
+        'kcal',
+        servingSizeG
+      );
+      let kj = openFoodFactsNutrientPer100g(
+        product,
+        nutriments,
+        ['energy-kj', 'energy'],
+        'kj',
+        servingSizeG
+      );
+      if (kcal.value == null && kj.value == null) {
+        nutriments = aggregatedNutriments;
+        kcal = openFoodFactsNutrientPer100g(
+          product,
+          nutriments,
+          ['energy-kcal'],
+          'kcal',
+          servingSizeG
+        );
+        kj = openFoodFactsNutrientPer100g(
+          product,
+          nutriments,
+          ['energy-kj', 'energy'],
+          'kj',
+          servingSizeG
+        );
+      }
+      const protein = openFoodFactsNutrientPer100g(
+        product,
+        nutriments,
+        ['proteins'],
+        'mass',
+        servingSizeG
+      );
+      const carbs = openFoodFactsNutrientPer100g(
+        product,
+        nutriments,
+        ['carbohydrates', 'carbs'],
+        'mass',
+        servingSizeG
+      );
+      const fat = openFoodFactsNutrientPer100g(
+        product,
+        nutriments,
+        ['fat'],
+        'mass',
+        servingSizeG
+      );
+      const nutrientWarnings = [
+        ...kcal.warnings,
+        ...kj.warnings,
+        ...protein.warnings,
+        ...carbs.warnings,
+        ...fat.warnings,
+      ];
+      parsed.nutrientCorrectionCount =
+        (parsed.nutrientCorrectionCount ?? 0) + nutrientWarnings.length;
+      const normalizedName = normalizeDisplayName(rawName);
+      const energyValidation = validateEnergyPair({
+        provider: 'openfoodfacts',
+        providerId,
+        name: normalizedName,
+        kcalPer100g: kcal.value,
+        kjPer100g: kj.value,
+        proteinPer100g: protein.value,
+        carbsPer100g: carbs.value,
+        fatPer100g: fat.value,
+      });
+      const calories = energyValidation.caloriesPer100g;
+      if (energyValidation.discrepancy) {
+        parsed.energyDiscrepancies?.push(energyValidation.discrepancy);
+      }
       const imageUrl =
         stringValue(product.image_front_url) ??
         stringValue(product.image_url) ??
@@ -886,10 +1032,10 @@ export async function parseOpenFoodFactsDirectory(
         countryCode: normalizeOpenFoodFactsCountryCode(product.countries_tags),
         region: 'global',
         caloriesPer100g: calories,
-        proteinPer100g: protein,
-        carbsPer100g: carbs,
-        fatPer100g: fat,
-        servingSizeG: serving?.grams ?? null,
+        proteinPer100g: protein.value,
+        carbsPer100g: carbs.value,
+        fatPer100g: fat.value,
+        servingSizeG,
         servingQuantity: serving?.quantity ?? null,
         servingUnit: serving?.unit ?? null,
         servingDescription: serving?.description ?? null,
@@ -899,7 +1045,7 @@ export async function parseOpenFoodFactsDirectory(
         imageUrl,
         license: 'ODbL',
         sourceUpdatedAt: stringValue(product.last_modified_t),
-        warnings: [],
+        warnings: nutrientWarnings,
       });
 
       const rejectionReason = shouldRejectRecord(record);

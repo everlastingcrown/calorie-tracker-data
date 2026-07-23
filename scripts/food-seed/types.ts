@@ -92,6 +92,7 @@ export interface ParsedSource {
   energyDiscrepancies?: EnergyDiscrepancy[];
   stagingRecordCount?: number;
   rejectedRowCount?: number;
+  nutrientCorrectionCount?: number;
 }
 
 export interface EnergyDiscrepancy {
@@ -200,6 +201,7 @@ export interface OpenFoodFactsParseOptions {
     rowsRead: number;
     stagingRecords: number;
     rejectedRows: number;
+    nutrientCorrections: number;
   }) => void | Promise<void>;
 }
 
