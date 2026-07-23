@@ -21,7 +21,9 @@ npm run type-check
 
 5. Commit the manifest/code changes.
 6. Trigger **Build food seed** from GitHub Actions.
-7. Choose whether to explicitly promote the run as verified, then confirm the workflow publishes the immutable versioned release and updates `foods.versions.json` on the `food-seed-index` release.
+7. Confirm the workflow publishes the immutable versioned release as unverified.
+8. Review `foods.validation.md` on that release, then run **Set food seed verification** with the
+   release tag and `verified`. Use the same workflow with `unverified` to demote a release.
 
 ## Inputs
 
@@ -70,9 +72,12 @@ index. Gzip is supported by the app runtime and substantially reduces these high
 payloads without changing the database schema after decompression.
 
 Each build manifest records semantic version, compatibility, UTC run time, immutable release tag,
-asset names, and explicit verification status. Apps should fetch `foods.versions.json` from the
-stable `food-seed-index` release and use `latestVerified`; an unverified run is listed for
-traceability but never changes that default pointer.
+asset names, and its initial unverified status. The post-build verification workflow persists
+promotion or demotion in `foods.versions.json` on the stable `food-seed-index` release. It displays
+the selected release's validation report and only promotes reports with a passing status that match
+the release timestamp. Apps should fetch this index, show only entries with `verified: true` in
+their version picker, and use `latestVerified` as the default; an unverified run remains listed for
+traceability but never changes that pointer.
 
 Apps should cache a seed by `versionId`, download the asset URL from that version's `assets` object,
 and decompress according to its `compression` metadata before running the existing import. This

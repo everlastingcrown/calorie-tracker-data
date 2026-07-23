@@ -1,0 +1,84 @@
+name: Set food seed verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing food-seed release tag; review its foods.validation.md before promoting
+        required: true
+        type: string
+      state:
+        description: Verification state to persist in the app-facing version index
+        required: true
+        type: choice
+        options:
+          - verified
+          - unverified
+
+concurrency:
+  group: food-seed-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  set-verification:
+    name: Set existing release verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Download release metadata and validation report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p .promotion
+          gh release download "$RELEASE_TAG" \
+            --pattern foods.manifest.json \
+            --pattern foods.validation.json \
+            --pattern foods.validation.md \
+            --dir .promotion
+          gh release download food-seed-index \
+            --pattern foods.versions.json \
+            --dir .promotion
+
+          {
+            echo "## Verification change"
+            echo
+            echo "- Release: [$RELEASE_TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$RELEASE_TAG)"
+            echo "- Requested state: \`${{ inputs.state }}\`"
+            echo
+            cat .promotion/foods.validation.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update app-facing version index
+        run: |
+          changed_at="$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')"
+          npm run --silent release:verification -- \
+            .promotion/foods.versions.json \
+            .promotion/foods.manifest.json \
+            .promotion/foods.validation.json \
+            "${{ inputs.state }}" \
+            .promotion/updated/foods.versions.json \
+            "$changed_at"
+
+      - name: Publish stable version index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload food-seed-index \
+            --clobber \
+            .promotion/updated/foods.versions.json

@@ -2,8 +2,38 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   createSeedRelease,
+  setSeedReleaseVerification,
   updateSeedVersionIndex,
 } from '../release-manifest.ts';
+import type { FoodSeedValidationReport } from '../validation.ts';
+
+function validation(
+  generatedAt: string,
+  status: FoodSeedValidationReport['status'] = 'pass'
+): FoodSeedValidationReport {
+  return {
+    schemaVersion: 1,
+    generatedAt,
+    status,
+    summary: {
+      assetsChecked: 1,
+      recordsChecked: 1,
+      checksPassed: status === 'pass' ? 1 : 0,
+      checksFailed: status === 'fail' ? 1 : 0,
+    },
+    dataQuality: {
+      stagingRecords: 1,
+      emittedFoods: 1,
+      genericFoods: 1,
+      brandedFoods: 0,
+      rejectedRows: 0,
+      duplicateGroups: 0,
+      quality: { high: 1, medium: 0, low: 0, missing: 0 },
+    },
+    assets: [{ file: 'foods.seed.json', kind: 'generic', records: 1 }],
+    checks: [],
+  };
+}
 
 test('createSeedRelease combines semver and canonical run time into an immutable version', () => {
   const release = createSeedRelease({
@@ -89,4 +119,89 @@ test('a verified promotion becomes the default and replaces a matching unverifie
   assert.equal(updated.versions.length, 1);
   assert.equal(updated.versions[0].verified, true);
   assert.equal(updated.latestVerified, promoted.versionId);
+});
+
+test('promotes a completed release with a passing validation report', () => {
+  const release = createSeedRelease({
+    semver: '2.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-19T06:30:00.000Z',
+    verified: false,
+  });
+  const initial = updateSeedVersionIndex(null, release, 'example/food-data');
+  const updated = setSeedReleaseVerification(
+    initial,
+    release,
+    validation(release.runAt),
+    true,
+    '2026-07-20T07:00:00.000Z'
+  );
+
+  assert.equal(updated.versions[0].verified, true);
+  assert.equal(updated.latestVerified, release.versionId);
+  assert.equal(updated.updatedAt, '2026-07-20T07:00:00.000Z');
+});
+
+test('rejects promotion when validation failed or belongs to another release', () => {
+  const release = createSeedRelease({
+    semver: '2.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-19T06:30:00.000Z',
+    verified: false,
+  });
+  const initial = updateSeedVersionIndex(null, release, 'example/food-data');
+  const changedAt = '2026-07-20T07:00:00.000Z';
+
+  assert.throws(
+    () =>
+      setSeedReleaseVerification(
+        initial,
+        release,
+        validation(release.runAt, 'fail'),
+        true,
+        changedAt
+      ),
+    /cannot be verified/
+  );
+  assert.throws(
+    () =>
+      setSeedReleaseVerification(
+        initial,
+        release,
+        validation('2026-07-19T06:31:00.000Z'),
+        true,
+        changedAt
+      ),
+    /does not belong/
+  );
+});
+
+test('demotes a verified release and falls back to the next verified version', () => {
+  const older = createSeedRelease({
+    semver: '1.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-18T06:30:00.000Z',
+    verified: true,
+  });
+  const newer = createSeedRelease({
+    semver: '1.1.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-19T06:30:00.000Z',
+    verified: true,
+  });
+  const initial = updateSeedVersionIndex(
+    updateSeedVersionIndex(null, older, 'example/food-data'),
+    newer,
+    'example/food-data'
+  );
+  const updated = setSeedReleaseVerification(
+    initial,
+    newer,
+    validation(newer.runAt),
+    false,
+    '2026-07-20T07:00:00.000Z'
+  );
+
+  assert.equal(updated.versions[0].verified, false);
+  assert.equal(updated.latestVerified, older.versionId);
 });

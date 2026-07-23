@@ -2,12 +2,6 @@ name: Build food seed
 
 on:
   workflow_dispatch:
-    inputs:
-      promote_verified:
-        description: Mark this build verified and eligible as the app default
-        required: true
-        type: boolean
-        default: false
 
 concurrency:
   group: food-seed-release
@@ -63,11 +57,9 @@ jobs:
 
       - name: Resolve release metadata
         id: release_metadata
-        env:
-          PROMOTE_VERIFIED: ${{ inputs.promote_verified }}
         run: |
           echo "run_at=$(date -u +'%Y-%m-%dT%H:%M:%S.000Z')" >> "$GITHUB_OUTPUT"
-          echo "verified=$PROMOTE_VERIFIED" >> "$GITHUB_OUTPUT"
+          echo "verified=false" >> "$GITHUB_OUTPUT"
 
       - name: Build food seed artifacts
         env:
