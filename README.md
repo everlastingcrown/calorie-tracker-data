@@ -15,6 +15,7 @@ The app repository stays small. This data repository downloads official source f
 npm run test
 npm run download:inputs
 npm run build:food-seed
+npm run validate:food-seed
 npm run type-check
 ```
 
@@ -51,8 +52,17 @@ Generated artifacts include normalized data derived from the enabled public sour
 - `generated/food-seed/foods.manifest.json`
 - `generated/food-seed/foods.versions.json` (release workflow only)
 - `generated/food-seed/foods.qa.json`
+- `generated/food-seed/foods.validation.json`
+- `generated/food-seed/foods.validation.md`
 
 Generated files and downloaded inputs are ignored by git.
+
+The validation command checks every generic and country-branded record for readable JSON/gzip,
+the seed schema, field semantics, and agreement with manifest and QA counts. It exits non-zero when
+any check fails, so the release workflow cannot publish an invalid build. The Markdown report is the
+maintainer summary; the JSON report provides the same deterministic pass/fail signal to automation.
+Both reports are uploaded as the `food-seed-validation-report` workflow artifact even on failure and
+are included in successful GitHub releases.
 
 The plain JSON files remain local build intermediates for QA. GitHub releases publish the gzip
 (`application/gzip`) seed files, using the `.json.gz` names recorded in the manifest and version

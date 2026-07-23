@@ -76,6 +76,19 @@ jobs:
           FOOD_SEED_VERIFIED: ${{ steps.release_metadata.outputs.verified }}
         run: npm run build:food-seed
 
+      - name: Validate food seed artifacts
+        run: npm run validate:food-seed
+
+      - name: Upload validation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: food-seed-validation-report
+          path: |
+            generated/food-seed/foods.validation.json
+            generated/food-seed/foods.validation.md
+          if-no-files-found: warn
+
       - name: Check runner storage
         run: df -h .
 
@@ -114,6 +127,8 @@ jobs:
             generated/food-seed/foods.manifest.json
             generated/food-seed/foods.versions.json
             generated/food-seed/foods.qa.json
+            generated/food-seed/foods.validation.json
+            generated/food-seed/foods.validation.md
             generated/food-seed/foods-*.branded.json.gz
           )
 
