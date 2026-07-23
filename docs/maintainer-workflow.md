@@ -20,10 +20,20 @@ sha256sum path/to/source-file
    `generated/food-seed/foods.energy-discrepancies.json` for conflicting kJ/kcal values and any
    macro-based corrections.
 9. Commit the manifest update and trigger the `Build food seed` workflow from GitHub Actions.
+   Every completed build is initially unverified.
 
 ## Release Tags
 
-The workflow creates an immutable tag from `seedVersion.semver` and the UTC run timestamp. The dispatch form requires an explicit promotion choice. Select verified only after inspecting QA; unverified releases remain discoverable but cannot become `latestVerified`. The stable `food-seed-index` release publishes `foods.versions.json` for app discovery.
+The build workflow creates an immutable tag from `seedVersion.semver` and the UTC run timestamp.
+To promote it, open the **Set food seed verification** workflow, enter the existing release tag,
+follow the release link to review `foods.validation.md`, and select `verified`. The workflow also
+shows the validation report in its run summary and refuses promotion unless that report passed and
+belongs to the selected release.
+
+To demote a release, run the same workflow with `unverified`. Promotion and demotion update
+`foods.versions.json` on the stable `food-seed-index` release. Apps use each entry's `verified`
+field and the recomputed `latestVerified` pointer; unverified releases remain discoverable for
+traceability but are not eligible for the version picker.
 
 ## Seed Asset Compression
 

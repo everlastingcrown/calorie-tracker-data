@@ -10,6 +10,7 @@
     "release:tag": "node --experimental-strip-types scripts/create-release-tag.ts",
     "release:notes": "node --experimental-strip-types scripts/create-release-notes.ts",
     "release:index": "node --experimental-strip-types scripts/update-release-index.ts",
+    "release:verification": "node --experimental-strip-types scripts/set-release-verification.ts",
     "test": "node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "type-check": "tsc --noEmit"
   },
