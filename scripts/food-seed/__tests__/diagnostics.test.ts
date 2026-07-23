@@ -12,7 +12,7 @@ test('PipelineDiagnostics throttles progress logs by row and time intervals', as
     rowInterval: 10_000,
   });
 
-  await diagnostics.progress('openfoodfacts parsing', { rowsRead: 1 });
+  await diagnostics.progress('openfoodfacts parsing', { rowsRead: 1, nutrientCorrections: 2 });
   await diagnostics.progress('openfoodfacts parsing', { rowsRead: 9_999 });
   await diagnostics.progress('openfoodfacts parsing', { rowsRead: 10_001 });
 
@@ -22,6 +22,7 @@ test('PipelineDiagnostics throttles progress logs by row and time intervals', as
   assert.equal(messages.length, 3);
   assert.match(messages[0], /stage=openfoodfacts parsing/);
   assert.match(messages[0], /rowsRead=1/);
+  assert.match(messages[0], /nutrientCorrections=2/);
   assert.match(messages[1], /rowsRead=10001/);
   assert.match(messages[2], /rowsRead=10002/);
 });

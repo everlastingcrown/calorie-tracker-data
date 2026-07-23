@@ -373,6 +373,83 @@ test('parseOpenFoodFactsDirectory uses aggregated nutrients when nutriments is n
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseOpenFoodFactsDirectory normalizes OFF nutrient units and serving values per 100g', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '9000000000001',
+      product_name: 'Unit-labelled protein drink',
+      brands: 'Example Brand',
+      serving_quantity: 20,
+      serving_size: '1 serving (20 g)',
+      nutriments: null,
+      nutrition: {
+        aggregated_set: {
+          per: 'serving',
+          nutrients: {
+            'energy-kcal': { value: 40, unit: 'kcal', source_per: 'serving' },
+            proteins: { value: 603, unit: 'mg', source_per: 'serving' },
+            carbohydrates: { value: 2, unit: 'g', source_per: 'serving' },
+            fat: { value: 247, unit: 'mg', source_per: 'serving' },
+          },
+        },
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+
+  assert.equal(source.rejectedRows.length, 0);
+  assert.equal(source.nutrientCorrectionCount, 4);
+  assert.equal(record.caloriesPer100g, 200);
+  assert.equal(record.proteinPer100g, 3.01);
+  assert.equal(record.carbsPer100g, 10);
+  assert.equal(record.fatPer100g, 1.23);
+  assert.equal(record.warnings.length, 4);
+  assert.ok(record.warnings.every((warning) => warning.startsWith('normalized ')));
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseOpenFoodFactsDirectory drops implausible OFF nutrients and marks the record low quality', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
+  await mkdir(dir, { recursive: true });
+  await writeFile(
+    path.join(dir, 'products.jsonl'),
+    `${JSON.stringify({
+      code: '9000000000002',
+      product_name: 'Invalid nutrition label',
+      brands: 'Example Brand',
+      nutriments: {
+        'energy-kcal_100g': 250,
+        proteins_100g: -4.76,
+        carbohydrates_100g: 30,
+        fat_100g: 104,
+      },
+    })}\n`
+  );
+
+  const [source] = await testExports.parseOpenFoodFactsDirectory(dir);
+  const record = source.stagingRecords[0];
+  const food = testExports.buildSeedFood(record, '2026-07-23T00:00:00.000Z');
+
+  assert.equal(source.rejectedRows.length, 0);
+  assert.equal(source.nutrientCorrectionCount, 2);
+  assert.equal(record.proteinPer100g, null);
+  assert.equal(record.carbsPer100g, 30);
+  assert.equal(record.fatPer100g, null);
+  assert.match(record.warnings[0], /outside 0\.\.100/);
+  assert.match(record.warnings[1], /outside 0\.\.100/);
+  assert.equal(food.proteinPer100g, 0);
+  assert.equal(food.fatPer100g, 0);
+  assert.equal(food.quality, 'low');
+
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseQuantityAndUnit recognizes additional discrete serving descriptors', () => {
   assert.deepEqual(testExports.parseQuantityAndUnit('1 slice (28 g)'), {
     quantity: 1,
