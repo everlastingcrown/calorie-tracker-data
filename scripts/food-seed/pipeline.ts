@@ -127,6 +127,7 @@ function groupBrandedRecordsByCountry(
   const groups = new Map<string, SeedStagingRecord[]>();
   for (const record of records) {
     const countryCode = record.countryCode ?? 'unknown';
+    record.countryCode = countryCode;
     const group = groups.get(countryCode) ?? [];
     group.push(record);
     groups.set(countryCode, group);

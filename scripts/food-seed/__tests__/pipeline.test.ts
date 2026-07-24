@@ -7,6 +7,7 @@ import { gunzipSync } from 'node:zlib';
 import * as XLSXModule from 'xlsx';
 import { testExports } from '../pipeline.ts';
 import { createSeedRelease } from '../release-manifest.ts';
+import { validateFoodSeedArtifacts } from '../validation.ts';
 
 type XlsxModule = typeof import('xlsx');
 const XLSX = ((XLSXModule as XlsxModule & { default?: XlsxModule }).default ??
@@ -1379,20 +1380,33 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   await writeFile(path.join(usdaDir, 'measure_unit.csv'), 'id,name\n');
   await writeFile(
     path.join(offDir, 'products.jsonl'),
-    `${JSON.stringify({
-      code: '4567890123456',
-      product_name: 'Peanut Butter',
-      brands: 'Example Brand',
-      countries_tags: ['en:united-states'],
-      serving_quantity: '30',
-      serving_size: '2 tbsp (30 g)',
-      nutriments: {
-        'energy-kcal_100g': 588,
-        proteins_100g: 25,
-        carbohydrates_100g: 20,
-        fat_100g: 50,
-      },
-    })}\n`
+    [
+      JSON.stringify({
+        code: '4567890123456',
+        product_name: 'Peanut Butter',
+        brands: 'Example Brand',
+        countries_tags: ['en:united-states'],
+        serving_quantity: '30',
+        serving_size: '2 tbsp (30 g)',
+        nutriments: {
+          'energy-kcal_100g': 588,
+          proteins_100g: 25,
+          carbohydrates_100g: 20,
+          fat_100g: 50,
+        },
+      }),
+      JSON.stringify({
+        code: '5678901234567',
+        product_name: 'Mystery Granola',
+        brands: 'Unknown Origin Foods',
+        nutriments: {
+          'energy-kcal_100g': 450,
+          proteins_100g: 10,
+          carbohydrates_100g: 65,
+          fat_100g: 18,
+        },
+      }),
+    ].join('\n') + '\n'
   );
 
   const summary = await testExports.buildFoodSeedArtifacts({
@@ -1405,12 +1419,16 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   const brandedFoods = JSON.parse(
     await readFile(path.join(outputDir, 'foods-us.branded.json'), 'utf8')
   );
+  const unknownBrandedFoods = JSON.parse(
+    await readFile(path.join(outputDir, 'foods-unknown.branded.json'), 'utf8')
+  );
   const manifest = JSON.parse(await readFile(path.join(outputDir, 'foods.manifest.json'), 'utf8'));
   const compressedGeneric = await readFile(path.join(outputDir, 'foods.seed.json.gz'));
   const compressedBranded = await readFile(path.join(outputDir, 'foods-us.branded.json.gz'));
+  const validation = await validateFoodSeedArtifacts(outputDir);
 
   assert.equal(summary.genericSeedCount, 1);
-  assert.equal(summary.brandedSeedCount, 1);
+  assert.equal(summary.brandedSeedCount, 2);
   assert.equal(genericFoods.length, 1);
   assert.equal(genericFoods[0].source, 'usda');
   assert.equal(genericFoods[0].countryCode, null);
@@ -1421,6 +1439,15 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].countryCode, 'us');
   assert.equal(brandedFoods[0].quality, 'medium');
   assert.equal(brandedFoods[0].qualityScore, 80);
+  assert.equal(unknownBrandedFoods.length, 1);
+  assert.equal(unknownBrandedFoods[0].countryCode, 'unknown');
+  assert.equal(
+    validation.checks.find(
+      (check) =>
+        check.asset === 'foods-unknown.branded.json' && check.category === 'content'
+    )?.status,
+    'pass'
+  );
   assert.deepEqual(brandedFoods[0].servingSizes, [
     {
       grams: 30,
@@ -1441,13 +1468,13 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.ok(compressedGeneric.byteLength < Buffer.byteLength(JSON.stringify(genericFoods)));
   assert.ok(compressedBranded.byteLength < Buffer.byteLength(JSON.stringify(brandedFoods)));
   assert.equal(manifest.totals.genericSeedCount, 1);
-  assert.equal(manifest.totals.brandedSeedCount, 1);
+  assert.equal(manifest.totals.brandedSeedCount, 2);
 
-  const emittedFoods = [...genericFoods, ...brandedFoods];
+  const emittedFoods = [...genericFoods, ...brandedFoods, ...unknownBrandedFoods];
   assert.ok(emittedFoods.every((food) => ['high', 'medium', 'low'].includes(food.quality)));
 
   const qa = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
-  assert.deepEqual(qa.counts.quality, { high: 1, medium: 1, low: 0, missing: 0 });
+  assert.deepEqual(qa.counts.quality, { high: 1, medium: 2, low: 0, missing: 0 });
 
   await rm(rootDir, { recursive: true, force: true });
 });
