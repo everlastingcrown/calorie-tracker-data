@@ -14,6 +14,13 @@ import type {
 } from './types.ts';
 import { assignFoodQuality } from './quality.ts';
 
+const PER_100G_NUTRIENT_MAXIMUMS = {
+  caloriesPer100g: 9_000,
+  proteinPer100g: 100,
+  carbsPer100g: 100,
+  fatPer100g: 100,
+} as const;
+
 const COMMON_SERVING_UNITS = [
   'cup',
   'tbsp',
@@ -445,7 +452,19 @@ export function createStagingRecord(
     warnings?: string[];
   }
 ): SeedStagingRecord {
-  const warnings = input.warnings ?? [];
+  const warnings = [...(input.warnings ?? [])];
+  const guardedNutrients = { ...input };
+  for (const [field, maximum] of Object.entries(PER_100G_NUTRIENT_MAXIMUMS) as [
+    keyof typeof PER_100G_NUTRIENT_MAXIMUMS,
+    number,
+  ][]) {
+    const value = input[field];
+    if (value == null || (value >= 0 && value <= maximum)) continue;
+
+    const clamped = Math.max(0, Math.min(value, maximum));
+    guardedNutrients[field] = clamped;
+    warnings.push(`clamped ${field}: ${value} is outside 0..${maximum}`);
+  }
   const barcodes = uniqueBarcodes([...(input.barcodes ?? []), input.barcode]);
   const servingSizes = input.servingSizes ?? (
     input.servingSizeG != null
@@ -463,7 +482,7 @@ export function createStagingRecord(
       : []
   );
   const record = {
-    ...input,
+    ...guardedNutrients,
     servingSizes,
     barcodes,
     warnings,

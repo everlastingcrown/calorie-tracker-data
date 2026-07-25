@@ -1263,6 +1263,65 @@ test('createStagingRecord computes bounded 0-100 quality scores from completenes
   assert.equal(sparseRecord.qualityScore, 26);
 });
 
+test('createStagingRecord clamps out-of-range per-100g nutrients with a diagnostic', () => {
+  const record = testExports.createStagingRecord({
+    provider: 'usda_foundation',
+    providerId: 'invalid-nutrients',
+    name: 'Invalid nutrients',
+    brandName: null,
+    countryCode: null,
+    region: 'us',
+    caloriesPer100g: 200,
+    proteinPer100g: 5,
+    carbsPer100g: 7000,
+    fatPer100g: 10,
+    servingSizeG: null,
+    servingQuantity: null,
+    servingUnit: null,
+    servingDescription: null,
+    servingWeightsG: {},
+    barcode: null,
+    imageUrl: null,
+    license: 'public-domain',
+    sourceUpdatedAt: null,
+    warnings: [],
+  });
+
+  assert.equal(record.carbsPer100g, 100);
+  assert.deepEqual(record.warnings, ['clamped carbsPer100g: 7000 is outside 0..100']);
+});
+
+test('createStagingRecord leaves valid per-100g nutrients unchanged', () => {
+  const record = testExports.createStagingRecord({
+    provider: 'usda_foundation',
+    providerId: 'valid-nutrients',
+    name: 'Valid nutrients',
+    brandName: null,
+    countryCode: null,
+    region: 'us',
+    caloriesPer100g: 200,
+    proteinPer100g: 5,
+    carbsPer100g: 30,
+    fatPer100g: 10,
+    servingSizeG: null,
+    servingQuantity: null,
+    servingUnit: null,
+    servingDescription: null,
+    servingWeightsG: {},
+    barcode: null,
+    imageUrl: null,
+    license: 'public-domain',
+    sourceUpdatedAt: null,
+    warnings: ['source diagnostic'],
+  });
+
+  assert.equal(record.caloriesPer100g, 200);
+  assert.equal(record.proteinPer100g, 5);
+  assert.equal(record.carbsPer100g, 30);
+  assert.equal(record.fatPer100g, 10);
+  assert.deepEqual(record.warnings, ['source diagnostic']);
+});
+
 test('parseOpenFoodFactsDirectory streams accepted records without retaining staging rows', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   const streamedRecords: ReturnType<typeof createDedupeRecord>[] = [];
@@ -1372,7 +1431,7 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
       'fdc_id,nutrient_id,amount',
       '1000,1008,18',
       '1000,1003,0.9',
-      '1000,1005,3.9',
+      '1000,1005,7000',
       '1000,1004,0.2',
     ].join('\n')
   );
@@ -1433,6 +1492,7 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(genericFoods[0].source, 'usda');
   assert.equal(genericFoods[0].countryCode, null);
   assert.equal(genericFoods[0].license, 'public-domain');
+  assert.equal(genericFoods[0].carbsPer100g, 100);
   assert.equal(brandedFoods.length, 1);
   assert.equal(brandedFoods[0].source, 'openfoodfacts');
   assert.equal(brandedFoods[0].brandName, 'Example Brand');
@@ -1441,6 +1501,12 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].qualityScore, 80);
   assert.equal(unknownBrandedFoods.length, 1);
   assert.equal(unknownBrandedFoods[0].countryCode, 'unknown');
+  assert.equal(
+    validation.checks.find(
+      (check) => check.asset === 'foods.seed.json' && check.category === 'content'
+    )?.status,
+    'pass'
+  );
   assert.equal(
     validation.checks.find(
       (check) =>
