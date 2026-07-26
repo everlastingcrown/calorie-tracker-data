@@ -123,6 +123,19 @@ test('validates every seed artifact and writes deterministic reports', async () 
     assert.equal(first.summary.assetsChecked, 2);
     assert.equal(first.summary.recordsChecked, 2);
     assert.equal(first.summary.checksPassed, 7);
+    assert.deepEqual(first.summary.errorsByAsset['foods.seed.json'], {
+      total: 0,
+      shown: 0,
+      errorRate: 0,
+      byField: {
+        caloriesPer100g: 0,
+        proteinPer100g: 0,
+        carbsPer100g: 0,
+        fatPer100g: 0,
+        countryCode: 0,
+        other: 0,
+      },
+    });
     assert.deepEqual(second, first);
     assert.equal(await readFile(path.join(dir, 'foods.validation.json'), 'utf8'), firstJson);
     assert.equal(await readFile(path.join(dir, 'foods.validation.md'), 'utf8'), firstMarkdown);
@@ -159,6 +172,51 @@ test('reports schema, content, integrity, and count failures', async () => {
       'fail'
     );
     assert.match(await readFile(path.join(dir, 'foods.validation.md'), 'utf8'), /\*\*Overall: FAIL\*\*/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('counts all asset errors while keeping the reported error arrays capped', async () => {
+  const dir = await createArtifacts();
+  try {
+    const invalidRecords = Array.from({ length: 25 }, (_, index) =>
+      food({
+        id: `invalid-${index}`,
+        brandName: 'Example Foods',
+        caloriesPer100g: -1,
+        proteinPer100g: 101,
+        countryCode: 'us',
+        source: 'openfoodfacts',
+      })
+    );
+    await writeSeedAsset(dir, 'foods-au.branded.json', invalidRecords);
+
+    const report = await validateFoodSeedArtifacts(dir);
+    const errors = report.summary.errorsByAsset['foods-au.branded.json'];
+    const contentCheck = report.checks.find(
+      (item) => item.asset === 'foods-au.branded.json' && item.category === 'content'
+    );
+
+    assert.deepEqual(errors, {
+      total: 75,
+      shown: 20,
+      errorRate: 3,
+      byField: {
+        caloriesPer100g: 25,
+        proteinPer100g: 25,
+        carbsPer100g: 0,
+        fatPer100g: 0,
+        countryCode: 25,
+        other: 0,
+      },
+    });
+    assert.equal(contentCheck?.summary, '75 error(s)');
+    assert.equal(contentCheck?.errors.length, 20);
+    assert.match(
+      await readFile(path.join(dir, 'foods.validation.md'), 'utf8'),
+      /\| `foods-au\.branded\.json` \| 75 \| 20 \| 300\.00% \| 25 \| 25 \| 0 \| 0 \| 25 \| 0 \|/
+    );
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

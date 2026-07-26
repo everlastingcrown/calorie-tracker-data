@@ -24,10 +24,33 @@ export interface FoodSeedValidationReport {
     recordsChecked: number;
     checksPassed: number;
     checksFailed: number;
+    errorsByAsset: Record<string, AssetErrorSummary>;
   };
   dataQuality: SeedQAReport['counts'];
   assets: { file: string; kind: 'generic' | 'branded'; records: number }[];
   checks: ValidationCheck[];
+}
+
+export interface AssetErrorSummary {
+  total: number;
+  shown: number;
+  errorRate: number;
+  byField: {
+    caloriesPer100g: number;
+    proteinPer100g: number;
+    carbsPer100g: number;
+    fatPer100g: number;
+    countryCode: number;
+    other: number;
+  };
+}
+
+type ErrorField = keyof AssetErrorSummary['byField'];
+
+interface ValidationErrors {
+  total: number;
+  shown: string[];
+  byField: AssetErrorSummary['byField'];
 }
 
 const REQUIRED_FOOD_FIELDS = [
@@ -57,8 +80,43 @@ const REQUIRED_FOOD_FIELDS = [
 
 const MAX_REPORTED_ERRORS = 20;
 
-function pushError(errors: string[], message: string): void {
-  if (errors.length < MAX_REPORTED_ERRORS) errors.push(message);
+function validationErrors(): ValidationErrors {
+  return {
+    total: 0,
+    shown: [],
+    byField: {
+      caloriesPer100g: 0,
+      proteinPer100g: 0,
+      carbsPer100g: 0,
+      fatPer100g: 0,
+      countryCode: 0,
+      other: 0,
+    },
+  };
+}
+
+function errorField(message: string): ErrorField {
+  const match = message.match(
+    /\.(caloriesPer100g|proteinPer100g|carbsPer100g|fatPer100g|countryCode):/
+  );
+  return (match?.[1] as ErrorField | undefined) ?? 'other';
+}
+
+function pushError(errors: ValidationErrors, message: string): void {
+  errors.total += 1;
+  errors.byField[errorField(message)] += 1;
+  if (errors.shown.length < MAX_REPORTED_ERRORS) errors.shown.push(message);
+}
+
+function mergeErrors(target: ValidationErrors, source: ValidationErrors): void {
+  target.total += source.total;
+  for (const field of Object.keys(target.byField) as ErrorField[]) {
+    target.byField[field] += source.byField[field];
+  }
+  for (const message of source.shown) {
+    if (target.shown.length >= MAX_REPORTED_ERRORS) break;
+    target.shown.push(message);
+  }
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -69,7 +127,11 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-function validateFoodSchema(value: unknown, recordLabel: string, errors: string[]): value is SeedFood {
+function validateFoodSchema(
+  value: unknown,
+  recordLabel: string,
+  errors: ValidationErrors
+): value is SeedFood {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     pushError(errors, `${recordLabel}: expected an object`);
     return false;
@@ -144,7 +206,7 @@ function validateFoodSchema(value: unknown, recordLabel: string, errors: string[
     pushError(errors, `${recordLabel}.barcodes: expected string array`);
   }
 
-  return errors.length === 0;
+  return errors.total === 0;
 }
 
 function validateFoodContent(
@@ -152,7 +214,7 @@ function validateFoodContent(
   recordLabel: string,
   kind: 'generic' | 'branded',
   countryCode: string | null,
-  errors: string[]
+  errors: ValidationErrors
 ): void {
   if (!food.id.trim()) pushError(errors, `${recordLabel}.id: must not be blank`);
   if (!food.name.trim()) pushError(errors, `${recordLabel}.name: must not be blank`);
@@ -254,8 +316,8 @@ async function hashStream(stream: NodeJS.ReadableStream): Promise<string> {
   return hash.digest('hex');
 }
 
-async function validateIntegrity(filePath: string): Promise<string[]> {
-  const errors: string[] = [];
+async function validateIntegrity(filePath: string): Promise<ValidationErrors> {
+  const errors = validationErrors();
   const compressedPath = `${filePath}.gz`;
   try {
     await fs.access(compressedPath);
@@ -263,9 +325,11 @@ async function validateIntegrity(filePath: string): Promise<string[]> {
       hashStream(createReadStream(filePath)),
       hashStream(createReadStream(compressedPath).pipe(createGunzip())),
     ]);
-    if (plainHash !== compressedContentHash) errors.push('gzip content does not match plain JSON');
+    if (plainHash !== compressedContentHash) {
+      pushError(errors, 'gzip content does not match plain JSON');
+    }
   } catch (error) {
-    errors.push(error instanceof Error ? error.message : String(error));
+    pushError(errors, error instanceof Error ? error.message : String(error));
   }
   return errors;
 }
@@ -273,15 +337,15 @@ async function validateIntegrity(filePath: string): Promise<string[]> {
 function check(
   asset: string,
   category: ValidationCheck['category'],
-  errors: string[],
+  errors: ValidationErrors,
   passedSummary: string
 ): ValidationCheck {
   return {
     asset,
     category,
-    status: errors.length === 0 ? 'pass' : 'fail',
-    summary: errors.length === 0 ? passedSummary : `${errors.length} error(s)`,
-    errors,
+    status: errors.total === 0 ? 'pass' : 'fail',
+    summary: errors.total === 0 ? passedSummary : `${errors.total} error(s)`,
+    errors: errors.shown,
   };
 }
 
@@ -299,6 +363,17 @@ function renderMarkdown(report: FoodSeedValidationReport): string {
     `- Rejected source rows: ${report.dataQuality.rejectedRows}`,
     `- Duplicate groups resolved: ${report.dataQuality.duplicateGroups}`,
     `- Food quality: ${report.dataQuality.quality.high} high, ${report.dataQuality.quality.medium} medium, ${report.dataQuality.quality.low} low, ${report.dataQuality.quality.missing} missing`,
+    '',
+    '## Errors by Asset',
+    '',
+    '| Asset | Total | Shown | Error rate | Calories | Protein | Carbs | Fat | Country | Other |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...report.assets.map((asset) => {
+      const errors = report.summary.errorsByAsset[asset.file];
+      return `| \`${asset.file}\` | ${errors.total} | ${errors.shown} | ${(errors.errorRate * 100).toFixed(2)}% | ${errors.byField.caloriesPer100g} | ${errors.byField.proteinPer100g} | ${errors.byField.carbsPer100g} | ${errors.byField.fatPer100g} | ${errors.byField.countryCode} | ${errors.byField.other} |`;
+    }),
+    '',
+    '## Checks',
     '',
     '| Result | Asset | Category | Summary |',
     '| --- | --- | --- | --- |',
@@ -331,56 +406,88 @@ export async function validateFoodSeedArtifacts(outputDir: string): Promise<Food
     .sort();
   const checks: ValidationCheck[] = [];
   const assets: FoodSeedValidationReport['assets'] = [];
+  const assetErrors = new Map<string, ValidationErrors>();
 
   for (const file of files) {
     const kind = file === 'foods.seed.json' ? 'generic' : 'branded';
     const countryCode = kind === 'branded' ? file.match(/^foods-([a-z0-9-]+)\./)?.[1] ?? null : null;
     const filePath = path.join(outputDir, file);
-    checks.push(check(file, 'integrity', await validateIntegrity(filePath), 'JSON and gzip are readable and identical'));
+    const combinedErrors = validationErrors();
+    const integrityErrors = await validateIntegrity(filePath);
+    mergeErrors(combinedErrors, integrityErrors);
+    checks.push(check(file, 'integrity', integrityErrors, 'JSON and gzip are readable and identical'));
 
-    const schemaErrors: string[] = [];
-    const contentErrors: string[] = [];
+    const schemaErrors = validationErrors();
+    const contentErrors = validationErrors();
     let records = 0;
     try {
       for await (const value of readJsonObjectArray(filePath)) {
         records += 1;
         const label = `record ${records}`;
-        const recordSchemaErrors: string[] = [];
+        const recordSchemaErrors = validationErrors();
         if (validateFoodSchema(value, label, recordSchemaErrors)) {
           validateFoodContent(value, label, kind, countryCode, contentErrors);
         } else {
-          for (const error of recordSchemaErrors) pushError(schemaErrors, error);
+          mergeErrors(schemaErrors, recordSchemaErrors);
         }
       }
     } catch (error) {
       pushError(schemaErrors, error instanceof Error ? error.message : String(error));
     }
+    mergeErrors(combinedErrors, schemaErrors);
+    mergeErrors(combinedErrors, contentErrors);
+    assetErrors.set(file, combinedErrors);
     assets.push({ file, kind, records });
     checks.push(check(file, 'schema', schemaErrors, `${records} records match the seed schema`));
     checks.push(check(file, 'content', contentErrors, `${records} records pass content checks`));
   }
 
-  const reconciliationErrors: string[] = [];
+  const reconciliationErrors = validationErrors();
   const genericRecords = assets.find((asset) => asset.kind === 'generic')?.records ?? 0;
   const brandedRecords = assets
     .filter((asset) => asset.kind === 'branded')
     .reduce((sum, asset) => sum + asset.records, 0);
-  if (files.length === 0) reconciliationErrors.push('no seed assets found');
+  if (files.length === 0) pushError(reconciliationErrors, 'no seed assets found');
   if (genericRecords !== manifest.totals.genericSeedCount) {
-    reconciliationErrors.push(`generic count ${genericRecords} does not match manifest ${manifest.totals.genericSeedCount}`);
+    pushError(
+      reconciliationErrors,
+      `generic count ${genericRecords} does not match manifest ${manifest.totals.genericSeedCount}`
+    );
   }
   if (brandedRecords !== manifest.totals.brandedSeedCount) {
-    reconciliationErrors.push(`branded count ${brandedRecords} does not match manifest ${manifest.totals.brandedSeedCount}`);
+    pushError(
+      reconciliationErrors,
+      `branded count ${brandedRecords} does not match manifest ${manifest.totals.brandedSeedCount}`
+    );
   }
   if (genericRecords + brandedRecords !== manifest.totals.seedCount) {
-    reconciliationErrors.push(`total count ${genericRecords + brandedRecords} does not match manifest ${manifest.totals.seedCount}`);
+    pushError(
+      reconciliationErrors,
+      `total count ${genericRecords + brandedRecords} does not match manifest ${manifest.totals.seedCount}`
+    );
   }
   if (qa.counts.genericFoods !== genericRecords || qa.counts.brandedFoods !== brandedRecords) {
-    reconciliationErrors.push('QA generic/branded counts do not match validated assets');
+    pushError(reconciliationErrors, 'QA generic/branded counts do not match validated assets');
   }
   checks.push(check('foods.manifest.json / foods.qa.json', 'integrity', reconciliationErrors, 'artifact counts reconcile'));
 
   const checksFailed = checks.filter((item) => item.status === 'fail').length;
+  const errorsByAsset = Object.fromEntries(
+    assets.map((asset) => {
+      const errors = assetErrors.get(asset.file) ?? validationErrors();
+      return [
+        asset.file,
+        {
+          total: errors.total,
+          shown: checks
+            .filter((item) => item.asset === asset.file)
+            .reduce((sum, item) => sum + item.errors.length, 0),
+          errorRate: asset.records === 0 ? 0 : errors.total / asset.records,
+          byField: errors.byField,
+        },
+      ];
+    })
+  );
   const report: FoodSeedValidationReport = {
     schemaVersion: 1,
     generatedAt: manifest.generatedAt,
@@ -390,6 +497,7 @@ export async function validateFoodSeedArtifacts(outputDir: string): Promise<Food
       recordsChecked: genericRecords + brandedRecords,
       checksPassed: checks.length - checksFailed,
       checksFailed,
+      errorsByAsset,
     },
     dataQuality: qa.counts,
     assets,
