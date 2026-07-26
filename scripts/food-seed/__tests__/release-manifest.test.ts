@@ -20,6 +20,21 @@ function validation(
       recordsChecked: 1,
       checksPassed: status === 'pass' ? 1 : 0,
       checksFailed: status === 'fail' ? 1 : 0,
+      errorsByAsset: {
+        'foods.seed.json': {
+          total: 0,
+          shown: 0,
+          errorRate: 0,
+          byField: {
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            carbsPer100g: 0,
+            fatPer100g: 0,
+            countryCode: 0,
+            other: 0,
+          },
+        },
+      },
     },
     dataQuality: {
       stagingRecords: 1,
