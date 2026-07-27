@@ -30,6 +30,12 @@ export interface SeedRelease {
   };
 }
 
+export interface IndexedSeedRelease extends Omit<SeedRelease, 'assets'> {
+  assets: SeedRelease['assets'] & {
+    sha256: string;
+  };
+}
+
 export interface SeedFood {
   id: string;
   name: string;

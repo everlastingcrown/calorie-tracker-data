@@ -1,4 +1,4 @@
-import type { SeedCompatibility, SeedRelease } from './types.ts';
+import type { IndexedSeedRelease, SeedCompatibility, SeedRelease } from './types.ts';
 import type { FoodSeedValidationReport } from './validation.ts';
 import { seedCompression } from './compression.ts';
 
@@ -6,7 +6,7 @@ export interface SeedVersionIndex {
   schemaVersion: 1;
   updatedAt: string;
   latestVerified: string | null;
-  versions: SeedRelease[];
+  versions: IndexedSeedRelease[];
 }
 
 export function createSeedRelease(input: {
@@ -46,20 +46,25 @@ export function createSeedRelease(input: {
 export function updateSeedVersionIndex(
   current: SeedVersionIndex | null,
   release: SeedRelease,
-  repository: string
+  repository: string,
+  genericAssetSha256: string
 ): SeedVersionIndex {
   if (!/^[^/]+\/[^/]+$/.test(repository)) {
     throw new Error('Repository must use owner/name format.');
   }
+  if (!/^[a-f0-9]{64}$/.test(genericAssetSha256)) {
+    throw new Error('Generic seed asset SHA-256 must be 64 lowercase hexadecimal characters.');
+  }
   const baseUrl =
     `https://github.com/${repository}/releases/download/` +
     encodeURIComponent(release.releaseTag);
-  const publishedRelease: SeedRelease = {
+  const publishedRelease: IndexedSeedRelease = {
     ...release,
     assets: {
       generic: `${baseUrl}/${release.assets.generic}`,
       brandedTemplate: `${baseUrl}/${release.assets.brandedTemplate}`,
       manifest: `${baseUrl}/${release.assets.manifest}`,
+      sha256: genericAssetSha256,
     },
   };
   const versions = [
@@ -122,5 +127,49 @@ export function parseSeedVersionIndex(value: unknown): SeedVersionIndex {
   if (index.schemaVersion !== 1 || !Array.isArray(index.versions)) {
     throw new Error('Unsupported seed version index.');
   }
+  for (const version of index.versions) {
+    if (!/^[a-f0-9]{64}$/.test(version?.assets?.sha256 ?? '')) {
+      throw new Error(
+        `Seed version ${version?.versionId ?? '<unknown>'} has a missing or invalid assets.sha256.`
+      );
+    }
+  }
   return index as SeedVersionIndex;
+}
+
+export async function backfillSeedVersionIndexDigests(
+  value: unknown,
+  readSha256: (url: string) => Promise<string>
+): Promise<SeedVersionIndex> {
+  const index = value as Partial<SeedVersionIndex>;
+  if (index.schemaVersion !== 1 || !Array.isArray(index.versions)) {
+    throw new Error('Unsupported seed version index.');
+  }
+
+  const versions: IndexedSeedRelease[] = [];
+  for (const version of index.versions) {
+    if (/^[a-f0-9]{64}$/.test(version?.assets?.sha256 ?? '')) {
+      versions.push(version);
+      continue;
+    }
+    if (version?.assets?.sha256 !== undefined) {
+      throw new Error(
+        `Seed version ${version?.versionId ?? '<unknown>'} has an invalid assets.sha256.`
+      );
+    }
+    if (typeof version?.assets?.generic !== 'string') {
+      throw new Error(
+        `Seed version ${version?.versionId ?? '<unknown>'} is missing its generic asset URL.`
+      );
+    }
+    versions.push({
+      ...version,
+      assets: {
+        ...version.assets,
+        sha256: await readSha256(version.assets.generic),
+      },
+    });
+  }
+
+  return parseSeedVersionIndex({ ...index, versions });
 }

@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  backfillSeedVersionIndexDigests,
   createSeedRelease,
+  parseSeedVersionIndex,
   setSeedReleaseVerification,
   updateSeedVersionIndex,
 } from '../release-manifest.ts';
 import type { FoodSeedValidationReport } from '../validation.ts';
+
+const genericAssetSha256 = 'a'.repeat(64);
 
 function validation(
   generatedAt: string,
@@ -107,8 +111,18 @@ test('unverified releases never replace the latest verified default', () => {
     runAt: '2026-07-19T06:30:00.000Z',
     verified: false,
   });
-  const initial = updateSeedVersionIndex(null, verified, 'example/food-data');
-  const updated = updateSeedVersionIndex(initial, unverified, 'example/food-data');
+  const initial = updateSeedVersionIndex(
+    null,
+    verified,
+    'example/food-data',
+    genericAssetSha256
+  );
+  const updated = updateSeedVersionIndex(
+    initial,
+    unverified,
+    'example/food-data',
+    genericAssetSha256
+  );
 
   assert.equal(updated.latestVerified, verified.versionId);
   assert.deepEqual(updated.versions.map((item) => item.versionId), [
@@ -118,6 +132,7 @@ test('unverified releases never replace the latest verified default', () => {
   assert.match(updated.versions[0].assets.manifest, /food-seed-v1\.1\.0/);
   assert.match(updated.versions[0].assets.generic, /foods\.seed\.json\.gz$/);
   assert.match(updated.versions[0].assets.brandedTemplate, /foods-\{country\}\.branded\.json\.gz$/);
+  assert.equal(updated.versions[0].assets.sha256, genericAssetSha256);
 });
 
 test('a verified promotion becomes the default and replaces a matching unverified entry', () => {
@@ -128,8 +143,18 @@ test('a verified promotion becomes the default and replaces a matching unverifie
     verified: false,
   });
   const promoted = { ...unverified, verified: true };
-  const initial = updateSeedVersionIndex(null, unverified, 'example/food-data');
-  const updated = updateSeedVersionIndex(initial, promoted, 'example/food-data');
+  const initial = updateSeedVersionIndex(
+    null,
+    unverified,
+    'example/food-data',
+    genericAssetSha256
+  );
+  const updated = updateSeedVersionIndex(
+    initial,
+    promoted,
+    'example/food-data',
+    genericAssetSha256
+  );
 
   assert.equal(updated.versions.length, 1);
   assert.equal(updated.versions[0].verified, true);
@@ -143,7 +168,12 @@ test('promotes a completed release with a passing validation report', () => {
     runAt: '2026-07-19T06:30:00.000Z',
     verified: false,
   });
-  const initial = updateSeedVersionIndex(null, release, 'example/food-data');
+  const initial = updateSeedVersionIndex(
+    null,
+    release,
+    'example/food-data',
+    genericAssetSha256
+  );
   const updated = setSeedReleaseVerification(
     initial,
     release,
@@ -164,7 +194,12 @@ test('rejects promotion when validation failed or belongs to another release', (
     runAt: '2026-07-19T06:30:00.000Z',
     verified: false,
   });
-  const initial = updateSeedVersionIndex(null, release, 'example/food-data');
+  const initial = updateSeedVersionIndex(
+    null,
+    release,
+    'example/food-data',
+    genericAssetSha256
+  );
   const changedAt = '2026-07-20T07:00:00.000Z';
 
   assert.throws(
@@ -205,9 +240,10 @@ test('demotes a verified release and falls back to the next verified version', (
     verified: true,
   });
   const initial = updateSeedVersionIndex(
-    updateSeedVersionIndex(null, older, 'example/food-data'),
+    updateSeedVersionIndex(null, older, 'example/food-data', genericAssetSha256),
     newer,
-    'example/food-data'
+    'example/food-data',
+    genericAssetSha256
   );
   const updated = setSeedReleaseVerification(
     initial,
@@ -219,4 +255,72 @@ test('demotes a verified release and falls back to the next verified version', (
 
   assert.equal(updated.versions[0].verified, false);
   assert.equal(updated.latestVerified, older.versionId);
+});
+
+test('parseSeedVersionIndex rejects missing and malformed generic asset digests', () => {
+  const release = createSeedRelease({
+    semver: '2.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-19T06:30:00.000Z',
+    verified: false,
+  });
+  const valid = updateSeedVersionIndex(
+    null,
+    release,
+    'example/food-data',
+    genericAssetSha256
+  );
+  const missing = structuredClone(valid);
+  const malformed = structuredClone(valid);
+  delete (missing.versions[0].assets as Partial<typeof missing.versions[0]['assets']>).sha256;
+  malformed.versions[0].assets.sha256 = 'A'.repeat(64);
+
+  assert.throws(() => parseSeedVersionIndex(missing), /missing or invalid assets\.sha256/);
+  assert.throws(() => parseSeedVersionIndex(malformed), /missing or invalid assets\.sha256/);
+});
+
+test('backfills missing retained digests from each exact generic asset URL', async () => {
+  const release = createSeedRelease({
+    semver: '1.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-18T06:30:00.000Z',
+    verified: true,
+  });
+  const current = updateSeedVersionIndex(
+    null,
+    release,
+    'example/food-data',
+    genericAssetSha256
+  );
+  delete (current.versions[0].assets as Partial<typeof current.versions[0]['assets']>).sha256;
+  const requestedUrls: string[] = [];
+
+  const updated = await backfillSeedVersionIndexDigests(current, async (url) => {
+    requestedUrls.push(url);
+    return 'b'.repeat(64);
+  });
+
+  assert.deepEqual(requestedUrls, [updated.versions[0].assets.generic]);
+  assert.equal(updated.versions[0].assets.sha256, 'b'.repeat(64));
+});
+
+test('rejects malformed digests instead of replacing them during backfill', async () => {
+  const release = createSeedRelease({
+    semver: '1.0.0',
+    compatibility: 'compatible',
+    runAt: '2026-07-18T06:30:00.000Z',
+    verified: true,
+  });
+  const current = updateSeedVersionIndex(
+    null,
+    release,
+    'example/food-data',
+    genericAssetSha256
+  );
+  current.versions[0].assets.sha256 = 'not-a-digest';
+
+  await assert.rejects(
+    backfillSeedVersionIndexDigests(current, async () => 'b'.repeat(64)),
+    /invalid assets\.sha256/
+  );
 });
