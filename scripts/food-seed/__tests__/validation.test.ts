@@ -67,6 +67,7 @@ async function createArtifacts(): Promise<string> {
     barcodes: ['9300000000001'],
     source: 'openfoodfacts',
     license: 'ODbL',
+    sourceUpdatedAt: null,
     quality: 'medium',
   });
   await Promise.all([
@@ -172,6 +173,25 @@ test('reports schema, content, integrity, and count failures', async () => {
       'fail'
     );
     assert.match(await readFile(path.join(dir, 'foods.validation.md'), 'utf8'), /\*\*Overall: FAIL\*\*/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects a non-null sourceUpdatedAt that is not a valid ISO date', async () => {
+  const dir = await createArtifacts();
+  try {
+    await writeSeedAsset(dir, 'foods.seed.json', [food({ sourceUpdatedAt: '2026-02-29' })]);
+
+    const report = await validateFoodSeedArtifacts(dir);
+    const contentCheck = report.checks.find(
+      (item) => item.asset === 'foods.seed.json' && item.category === 'content'
+    );
+
+    assert.equal(contentCheck?.status, 'fail');
+    assert.deepEqual(contentCheck?.errors, [
+      'record 1.sourceUpdatedAt: must be a valid ISO date string',
+    ]);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
