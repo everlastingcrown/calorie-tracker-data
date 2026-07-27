@@ -41,7 +41,10 @@ The build creates gzip-compressed generic and country-branded seed assets at com
 Plain JSON remains in the ignored build directory for QA and round-trip checks, but the release
 workflow publishes only `foods.seed.json.gz` and `foods-{country}.branded.json.gz`. The release
 manifest and stable version index identify the codec as `gzip`, the media type as
-`application/gzip`, and point their asset fields at the compressed files.
+`application/gzip`, and point their asset fields at the compressed files. Each stable index entry
+also records the SHA-256 of the exact published `foods.seed.json.gz` bytes in `assets.sha256`.
+When the first digest-aware release updates a legacy index, the publisher downloads retained
+generic assets and backfills their matching digests before replacing the stable index.
 
 Compression is a packaging boundary: consumers decompress the selected asset and pass the original
 JSON bytes to their existing importer. Cache entries should be keyed by the immutable `versionId`.

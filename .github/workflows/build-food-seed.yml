@@ -104,6 +104,7 @@ jobs:
             --dir .release-index || true
           npm run --silent release:index -- \
             generated/food-seed/foods.manifest.json \
+            generated/food-seed/foods.seed.json.gz \
             .release-index/foods.versions.json \
             generated/food-seed/foods.versions.json \
             "$GITHUB_REPOSITORY"
