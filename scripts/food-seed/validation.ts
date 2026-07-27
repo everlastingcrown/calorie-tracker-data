@@ -79,6 +79,8 @@ const REQUIRED_FOOD_FIELDS = [
 ] as const;
 
 const MAX_REPORTED_ERRORS = 20;
+const ISO_DATE_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})(?:T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d))?$/;
 
 function validationErrors(): ValidationErrors {
   return {
@@ -125,6 +127,18 @@ function isNullableString(value: unknown): value is string | null {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isIsoDate(value: string): boolean {
+  const match = ISO_DATE_PATTERN.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
 }
 
 function validateFoodSchema(
@@ -219,6 +233,9 @@ function validateFoodContent(
   if (!food.id.trim()) pushError(errors, `${recordLabel}.id: must not be blank`);
   if (!food.name.trim()) pushError(errors, `${recordLabel}.name: must not be blank`);
   if (!food.license.trim()) pushError(errors, `${recordLabel}.license: must not be blank`);
+  if (food.sourceUpdatedAt !== null && !isIsoDate(food.sourceUpdatedAt)) {
+    pushError(errors, `${recordLabel}.sourceUpdatedAt: must be a valid ISO date string`);
+  }
   if (!['high', 'medium', 'low'].includes(food.quality)) {
     pushError(errors, `${recordLabel}.quality: unsupported value ${food.quality}`);
   }
