@@ -9,6 +9,7 @@ export default {
       {
         prepareCmd:
           'npm run --silent release:version -- ${nextRelease.version} ${nextRelease.type}',
+        publishCmd: 'gh workflow run build-food-seed.yml --ref main',
       },
     ],
     [

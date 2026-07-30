@@ -2,11 +2,6 @@ name: Build food seed
 
 on:
   workflow_dispatch:
-  workflow_run:
-    workflows:
-      - Release food seed version
-    types:
-      - completed
 
 concurrency:
   group: food-seed-release
@@ -18,9 +13,6 @@ permissions:
 jobs:
   build-food-seed:
     name: Build and publish food seed
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
