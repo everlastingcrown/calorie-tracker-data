@@ -9,7 +9,8 @@ The app repository stays small. This data repository downloads official source f
 1. Use a Conventional Commit PR title. `fix:` creates a patch version, `feat:` creates a minor
    version, and a `BREAKING CHANGE:` footer (or `!` after the type/scope) creates a major version.
 2. Update `inputs/manifest.json` when a source URL or version changes, but do not edit
-   `seedVersion` manually.
+   `seedVersion` manually. The checked-in value is build fixture data, not the latest released
+   version.
 3. Download the changed source locally and replace its `sha256` with the actual hash.
 4. Run `npm install --include=dev` after dependency changes.
 5. Run:
@@ -22,9 +23,10 @@ npm run validate:food-seed
 npm run type-check
 ```
 
-6. Merge the PR to `main`. The **Release food seed version** workflow tests the commit,
-   runs semantic-release, updates `inputs/manifest.json`, and tags the semantic version. A
-   successful semantic release automatically starts **Build food seed**.
+6. Merge the PR to `main`. The **Release food seed version** workflow tests the commit, runs
+   semantic-release, tags the reviewed merge commit, and passes the semantic version and release
+   type to **Build food seed**. The build updates its working copy of `inputs/manifest.json`
+   without committing that release metadata to `main`.
 7. Confirm the build publishes the auto-versioned immutable release as unverified. The version is
    written to the existing `foods.manifest.json` and `foods.versions.json` surfaces.
 8. Review `foods.validation.md` on that release, then run **Set food seed verification** with the
