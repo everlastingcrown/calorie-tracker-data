@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { downloadManifestInputs, parseDownloadArgs } from '../../download-inputs.ts';
-import { readFoodSeedInputManifest } from '../input-manifest.ts';
+import { readFoodSeedInputManifest, updateFoodSeedVersion } from '../input-manifest.ts';
 import { buildFoodSeedReleaseNotes } from '../release-notes.ts';
 
 test('readFoodSeedInputManifest validates schema and hashes', async () => {
@@ -50,6 +50,31 @@ test('readFoodSeedInputManifest validates schema and hashes', async () => {
   assert.equal(manifest.sources[0].files[0].extract, 'zip');
 
   await rm(dir, { recursive: true, force: true });
+});
+
+test('semantic releases update the manifest version and compatibility', () => {
+  const manifest = {
+    schemaVersion: 2 as const,
+    seedVersion: { semver: '2.0.0', compatibility: 'non-backward-compatible' as const },
+    sources: [],
+  };
+
+  assert.deepEqual(updateFoodSeedVersion(manifest, '2.1.0', 'minor').seedVersion, {
+    semver: '2.1.0',
+    compatibility: 'compatible',
+  });
+  assert.deepEqual(updateFoodSeedVersion(manifest, '3.0.0', 'major').seedVersion, {
+    semver: '3.0.0',
+    compatibility: 'non-backward-compatible',
+  });
+  assert.throws(
+    () => updateFoodSeedVersion(manifest, '2.1', 'minor'),
+    /MAJOR\.MINOR\.PATCH/
+  );
+  assert.throws(
+    () => updateFoodSeedVersion(manifest, '2.1.0', 'prerelease' as 'patch'),
+    /major, minor, or patch/
+  );
 });
 
 test('parseDownloadArgs supports manifest, cache, output, and disabled source flags', () => {

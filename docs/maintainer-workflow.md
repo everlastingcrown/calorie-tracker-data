@@ -2,7 +2,8 @@
 
 ## Updating Source Inputs
 
-1. Change the relevant source `url`, `version`, and `license` metadata in `inputs/manifest.json`. Update `seedVersion.semver` and its explicit compatibility indicator when the output contract changes.
+1. Change the relevant source `url`, `version`, and `license` metadata in `inputs/manifest.json`.
+   Do not edit `seedVersion` manually; semantic-release updates it from the merged commit type.
 2. Download the new file outside git.
 3. Compute its SHA256:
 
@@ -19,12 +20,32 @@ sha256sum path/to/source-file
 8. Inspect `generated/food-seed/foods.qa.json` for rejected rows or duplicate spikes, and
    `generated/food-seed/foods.energy-discrepancies.json` for conflicting kJ/kcal values and any
    macro-based corrections.
-9. Commit the manifest update and trigger the `Build food seed` workflow from GitHub Actions.
-   Every completed build is initially unverified.
+9. Commit the manifest update with a Conventional Commit PR title and merge it. The semantic
+   release automatically triggers `Build food seed`. Every completed build is initially unverified.
 
 ## Release Tags
 
-The build workflow creates an immutable tag from `seedVersion.semver` and the UTC run timestamp.
+Pull requests must use Conventional Commit titles because the merge commit drives the pipeline
+version:
+
+- `fix:` and `perf:` produce a patch release.
+- `feat:` produces a minor release.
+- A `BREAKING CHANGE:` footer or `type!:`/`type(scope)!:` produces a major release.
+- Other types such as `docs:`, `test:`, `refactor:`, and `chore:` do not release by default.
+
+After a release-triggering commit reaches `main`, the **Release food seed version** workflow runs
+tests and semantic-release. It commits the new `seedVersion.semver` and compatibility indicator to
+`inputs/manifest.json`, creates a `food-seed-semver-vMAJOR.MINOR.PATCH` bookkeeping tag, and starts
+the existing build workflow. Patch and minor releases are marked `compatible`; major releases are
+marked `non-backward-compatible`.
+
+For a local preview, create or fetch the current `food-seed-semver-vMAJOR.MINOR.PATCH` baseline tag
+and run `npm run release:dry-run`. The dry run analyzes commits without changing the manifest,
+creating a commit, or pushing a tag.
+
+The build workflow creates an immutable artifact tag from the auto-updated `seedVersion.semver` and
+the UTC run timestamp. It writes the same version to `foods.manifest.json` and
+`foods.versions.json`, initially with `verified: false`.
 To promote it, open the **Set food seed verification** workflow, enter the existing release tag,
 follow the release link to review `foods.validation.md`, and select `verified`. The workflow also
 shows the validation report in its run summary and refuses promotion unless that report passed and

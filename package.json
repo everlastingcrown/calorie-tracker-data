@@ -11,6 +11,9 @@
     "release:notes": "node --experimental-strip-types scripts/create-release-notes.ts",
     "release:index": "node --experimental-strip-types scripts/update-release-index.ts",
     "release:verification": "node --experimental-strip-types scripts/set-release-verification.ts",
+    "release:version": "node --experimental-strip-types scripts/set-food-seed-version.ts",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run --no-ci",
     "test": "node --experimental-strip-types --test \"scripts/**/*.test.ts\"",
     "type-check": "tsc --noEmit"
   },
@@ -18,7 +21,10 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
     "@types/node": "^25.8.0",
+    "semantic-release": "^25.0.8",
     "typescript": "~5.9.2"
   }
 }
