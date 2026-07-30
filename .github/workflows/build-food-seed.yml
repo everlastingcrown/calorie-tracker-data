@@ -2,6 +2,19 @@ name: Build food seed
 
 on:
   workflow_dispatch:
+    inputs:
+      seed_version:
+        description: Semantic version to write into the published seed artifacts
+        required: true
+        type: string
+      release_type:
+        description: Compatibility impact of this release
+        required: true
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
 
 concurrency:
   group: food-seed-release
@@ -45,6 +58,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --include=dev
+
+      - name: Apply release metadata
+        env:
+          SEED_VERSION: ${{ inputs.seed_version }}
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: npm run --silent release:version -- "$SEED_VERSION" "$RELEASE_TYPE"
 
       - name: Run tests
         run: npm run test

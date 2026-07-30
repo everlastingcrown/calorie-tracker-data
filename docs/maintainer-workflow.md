@@ -3,7 +3,8 @@
 ## Updating Source Inputs
 
 1. Change the relevant source `url`, `version`, and `license` metadata in `inputs/manifest.json`.
-   Do not edit `seedVersion` manually; semantic-release updates it from the merged commit type.
+   Do not edit `seedVersion` manually. The checked-in value is build fixture data; semantic-release
+   passes the released version and commit-derived release type to the build workflow.
 2. Download the new file outside git.
 3. Compute its SHA256:
 
@@ -34,17 +35,19 @@ version:
 - Other types such as `docs:`, `test:`, `refactor:`, and `chore:` do not release by default.
 
 After a release-triggering commit reaches `main`, the **Release food seed version** workflow runs
-tests and semantic-release. It commits the new `seedVersion.semver` and compatibility indicator to
-`inputs/manifest.json`, creates a `food-seed-semver-vMAJOR.MINOR.PATCH` bookkeeping tag, and starts
-the existing build workflow. Patch and minor releases are marked `compatible`; major releases are
-marked `non-backward-compatible`.
+tests and semantic-release. It creates a `food-seed-semver-vMAJOR.MINOR.PATCH` bookkeeping tag on
+the reviewed merge commit and starts the build workflow with the computed semantic version and
+release type. The build updates `inputs/manifest.json` only in its runner working copy before
+creating artifacts; it does not push a release commit to `main`. Patch and minor releases are
+marked `compatible`; major releases are marked `non-backward-compatible`.
 
 For a local preview, create or fetch the current `food-seed-semver-vMAJOR.MINOR.PATCH` baseline tag
 and run `npm run release:dry-run`. The dry run analyzes commits without changing the manifest,
 creating a commit, or pushing a tag.
 
-The build workflow creates an immutable artifact tag from the auto-updated `seedVersion.semver` and
-the UTC run timestamp. It writes the same version to `foods.manifest.json` and
+The build workflow requires a semantic version and release type when manually dispatched. It
+creates an immutable artifact tag from that version and the UTC run timestamp, and writes the same
+version to `foods.manifest.json` and
 `foods.versions.json`, initially with `verified: false`.
 To promote it, open the **Set food seed verification** workflow, enter the existing release tag,
 follow the release link to review `foods.validation.md`, and select `verified`. The workflow also

@@ -7,19 +7,10 @@ export default {
     [
       '@semantic-release/exec',
       {
-        prepareCmd:
-          'npm run --silent release:version -- ${nextRelease.version} ${nextRelease.type}',
-        publishCmd: 'gh workflow run build-food-seed.yml --ref main',
-      },
-    ],
-    [
-      '@semantic-release/git',
-      {
-        assets: ['inputs/manifest.json'],
-        message:
-          'chore(release): food seed ${nextRelease.version} [skip ci]\n\n' +
-          '${nextRelease.notes}\n\n' +
-          'Co-Authored-By: Paperclip <noreply@paperclip.ing>',
+        publishCmd:
+          'gh workflow run build-food-seed.yml --ref main ' +
+          '-f seed_version=${nextRelease.version} ' +
+          '-f release_type=${nextRelease.type}',
       },
     ],
   ],
