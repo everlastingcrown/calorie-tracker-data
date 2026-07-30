@@ -36,6 +36,29 @@ export interface FoodSeedInputManifest {
   sources: FoodSeedManifestSource[];
 }
 
+export type SemanticReleaseType = 'major' | 'minor' | 'patch';
+
+export function updateFoodSeedVersion(
+  manifest: FoodSeedInputManifest,
+  semver: string,
+  releaseType: SemanticReleaseType
+): FoodSeedInputManifest {
+  if (!/^\d+\.\d+\.\d+$/.test(semver)) {
+    throw new Error('Released seed version must use MAJOR.MINOR.PATCH.');
+  }
+  if (!['major', 'minor', 'patch'].includes(releaseType)) {
+    throw new Error('Release type must be major, minor, or patch.');
+  }
+
+  return {
+    ...manifest,
+    seedVersion: {
+      semver,
+      compatibility: releaseType === 'major' ? 'non-backward-compatible' : 'compatible',
+    },
+  };
+}
+
 export async function readFoodSeedInputManifest(
   manifestPath: string
 ): Promise<FoodSeedInputManifest> {

@@ -1,0 +1,57 @@
+name: Release food seed version
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Analyze commits and bump seed version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full release history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Bootstrap semantic-release from the latest pipeline release
+        shell: bash
+        run: |
+          if git tag --list 'food-seed-semver-v*' | grep -q .; then
+            exit 0
+          fi
+
+          legacy_tag="$(git tag --list 'food-seed-v*' --sort=-version:refname | head -n 1)"
+          if [[ -z "$legacy_tag" ]]; then
+            echo "No existing food seed release tag found."
+            exit 1
+          fi
+
+          baseline_version="${legacy_tag#food-seed-v}"
+          baseline_version="${baseline_version%%-*}"
+          git tag "food-seed-semver-v$baseline_version" "$legacy_tag^{}"
+
+      - name: Release semantic food seed version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run release

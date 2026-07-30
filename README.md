@@ -6,10 +6,13 @@ The app repository stays small. This data repository downloads official source f
 
 ## Maintainer Workflow
 
-1. Update `inputs/manifest.json` when a source URL or version changes.
-2. Download the changed source locally and replace its `sha256` with the actual hash.
-3. Run `npm install --include=dev` after dependency changes.
-4. Run:
+1. Use a Conventional Commit PR title. `fix:` creates a patch version, `feat:` creates a minor
+   version, and a `BREAKING CHANGE:` footer (or `!` after the type/scope) creates a major version.
+2. Update `inputs/manifest.json` when a source URL or version changes, but do not edit
+   `seedVersion` manually.
+3. Download the changed source locally and replace its `sha256` with the actual hash.
+4. Run `npm install --include=dev` after dependency changes.
+5. Run:
 
 ```sh
 npm run test
@@ -19,9 +22,11 @@ npm run validate:food-seed
 npm run type-check
 ```
 
-5. Commit the manifest/code changes.
-6. Trigger **Build food seed** from GitHub Actions.
-7. Confirm the workflow publishes the immutable versioned release as unverified.
+6. Merge the PR to `main`. The **Release food seed version** workflow tests the commit,
+   runs semantic-release, updates `inputs/manifest.json`, and tags the semantic version. A
+   successful semantic release automatically starts **Build food seed**.
+7. Confirm the build publishes the auto-versioned immutable release as unverified. The version is
+   written to the existing `foods.manifest.json` and `foods.versions.json` surfaces.
 8. Review `foods.validation.md` on that release, then run **Set food seed verification** with the
    release tag and `verified`. Use the same workflow with `unverified` to demote a release.
 
