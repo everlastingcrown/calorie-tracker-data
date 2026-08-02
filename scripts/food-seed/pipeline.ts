@@ -8,6 +8,7 @@ import {
 } from './diagnostics.ts';
 import {
   parseAfcdDirectory,
+  normalizeOpenFoodFactsCountryCode,
   parseOpenFoodFactsDirectory,
   parseOpenFoodFactsServing,
   parseUsdaDirectory,
@@ -358,6 +359,7 @@ export const testExports = {
   parseAfcdDirectory,
   parseOpenFoodFactsDirectory,
   parseOpenFoodFactsServing,
+  normalizeOpenFoodFactsCountryCode,
   parseQuantityAndUnit,
   buildServingSizes,
   isPlausibleServingGrams,
