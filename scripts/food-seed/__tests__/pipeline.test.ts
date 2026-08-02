@@ -161,6 +161,13 @@ test('parseOpenFoodFactsDirectory extracts serving weight from serving text', as
   await rm(dir, { recursive: true, force: true });
 });
 
+test('normalizeOpenFoodFactsCountryCode maps Korean country tags to ISO KR', () => {
+  assert.equal(testExports.normalizeOpenFoodFactsCountryCode(['en:south-korea']), 'kr');
+  assert.equal(testExports.normalizeOpenFoodFactsCountryCode(['en:korea']), 'kr');
+  assert.equal(testExports.normalizeOpenFoodFactsCountryCode(['en:korea-republic-of']), 'kr');
+  assert.equal(testExports.normalizeOpenFoodFactsCountryCode(['en:republic-of-korea']), 'kr');
+});
+
 test('parseOpenFoodFactsDirectory treats a labelled portion as one discrete serving', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });
@@ -1465,6 +1472,18 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
           fat_100g: 18,
         },
       }),
+      JSON.stringify({
+        code: '8801115111054',
+        product_name: '나 100% 1급A우유 2.3L',
+        brands: 'Seoul Milk',
+        countries_tags: ['en:south-korea'],
+        nutriments: {
+          'energy-kcal_100g': 70,
+          proteins_100g: 3,
+          carbohydrates_100g: 5,
+          fat_100g: 4,
+        },
+      }),
     ].join('\n') + '\n'
   );
 
@@ -1481,13 +1500,19 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   const unknownBrandedFoods = JSON.parse(
     await readFile(path.join(outputDir, 'foods-unknown.branded.json'), 'utf8')
   );
+  const koreanBrandedFoods = JSON.parse(
+    await readFile(path.join(outputDir, 'foods-kr.branded.json'), 'utf8')
+  );
   const manifest = JSON.parse(await readFile(path.join(outputDir, 'foods.manifest.json'), 'utf8'));
   const compressedGeneric = await readFile(path.join(outputDir, 'foods.seed.json.gz'));
   const compressedBranded = await readFile(path.join(outputDir, 'foods-us.branded.json.gz'));
+  const compressedKoreanBranded = await readFile(
+    path.join(outputDir, 'foods-kr.branded.json.gz')
+  );
   const validation = await validateFoodSeedArtifacts(outputDir);
 
   assert.equal(summary.genericSeedCount, 1);
-  assert.equal(summary.brandedSeedCount, 2);
+  assert.equal(summary.brandedSeedCount, 3);
   assert.equal(genericFoods.length, 1);
   assert.equal(genericFoods[0].source, 'usda');
   assert.equal(genericFoods[0].countryCode, null);
@@ -1501,6 +1526,9 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(brandedFoods[0].qualityScore, 80);
   assert.equal(unknownBrandedFoods.length, 1);
   assert.equal(unknownBrandedFoods[0].countryCode, 'unknown');
+  assert.equal(koreanBrandedFoods.length, 1);
+  assert.equal(koreanBrandedFoods[0].brandName, 'Seoul Milk');
+  assert.equal(koreanBrandedFoods[0].countryCode, 'kr');
   assert.equal(
     validation.checks.find(
       (check) => check.asset === 'foods.seed.json' && check.category === 'content'
@@ -1511,6 +1539,12 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
     validation.checks.find(
       (check) =>
         check.asset === 'foods-unknown.branded.json' && check.category === 'content'
+    )?.status,
+    'pass'
+  );
+  assert.equal(
+    validation.checks.find(
+      (check) => check.asset === 'foods-kr.branded.json' && check.category === 'content'
     )?.status,
     'pass'
   );
@@ -1531,16 +1565,25 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.equal(manifest.release.compression.codec, 'gzip');
   assert.deepEqual(JSON.parse(gunzipSync(compressedGeneric).toString('utf8')), genericFoods);
   assert.deepEqual(JSON.parse(gunzipSync(compressedBranded).toString('utf8')), brandedFoods);
+  assert.deepEqual(
+    JSON.parse(gunzipSync(compressedKoreanBranded).toString('utf8')),
+    koreanBrandedFoods
+  );
   assert.ok(compressedGeneric.byteLength < Buffer.byteLength(JSON.stringify(genericFoods)));
   assert.ok(compressedBranded.byteLength < Buffer.byteLength(JSON.stringify(brandedFoods)));
   assert.equal(manifest.totals.genericSeedCount, 1);
-  assert.equal(manifest.totals.brandedSeedCount, 2);
+  assert.equal(manifest.totals.brandedSeedCount, 3);
 
-  const emittedFoods = [...genericFoods, ...brandedFoods, ...unknownBrandedFoods];
+  const emittedFoods = [
+    ...genericFoods,
+    ...brandedFoods,
+    ...koreanBrandedFoods,
+    ...unknownBrandedFoods,
+  ];
   assert.ok(emittedFoods.every((food) => ['high', 'medium', 'low'].includes(food.quality)));
 
   const qa = JSON.parse(await readFile(path.join(outputDir, 'foods.qa.json'), 'utf8'));
-  assert.deepEqual(qa.counts.quality, { high: 1, medium: 2, low: 0, missing: 0 });
+  assert.deepEqual(qa.counts.quality, { high: 1, medium: 3, low: 0, missing: 0 });
 
   await rm(rootDir, { recursive: true, force: true });
 });
