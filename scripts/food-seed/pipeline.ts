@@ -342,6 +342,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
 }
 
 export const testExports = {
+  buildManifest,
   createCsvRowParser,
   parseCsv,
   normalizeDisplayName,

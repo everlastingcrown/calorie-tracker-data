@@ -59,6 +59,21 @@ To demote a release, run the same workflow with `unverified`. Promotion and demo
 field and the recomputed `latestVerified` pointer; unverified releases remain discoverable for
 traceability but are not eligible for the version picker.
 
+## Branded Food Count Contract
+
+For each `schemaVersion: 1` release, `foods.manifest.json` exposes the total number of records in
+all published `foods-{country}.branded.json.gz` assets as the non-negative integer
+`totals.brandedSeedCount`. The build derives this value from the deduplicated branded records used
+to write those assets, and release validation streams the assets to reject a missing, fractional,
+negative, or inconsistent count. This avoids loading a second full copy of the branded dataset
+solely to calculate progress.
+
+Consumers first select an entry from `foods.versions.json`, then fetch that entry's
+`assets.manifest` URL and read `totals.brandedSeedCount` before ingesting branded records. Manifests
+published before this contract may not contain a usable count; consumers must treat the total as
+unknown and continue installation without determinate progress. [FIT-1107](/FIT/issues/FIT-1107)
+implements that app-side behavior.
+
 ## Seed Asset Compression
 
 The build creates gzip-compressed generic and country-branded seed assets at compression level 9.

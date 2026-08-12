@@ -123,7 +123,7 @@ test('validates every seed artifact and writes deterministic reports', async () 
     assert.equal(first.status, 'pass');
     assert.equal(first.summary.assetsChecked, 2);
     assert.equal(first.summary.recordsChecked, 2);
-    assert.equal(first.summary.checksPassed, 7);
+    assert.equal(first.summary.checksPassed, 8);
     assert.deepEqual(first.summary.errorsByAsset['foods.seed.json'], {
       total: 0,
       shown: 0,
@@ -175,6 +175,70 @@ test('reports schema, content, integrity, and count failures', async () => {
     assert.match(await readFile(path.join(dir, 'foods.validation.md'), 'utf8'), /\*\*Overall: FAIL\*\*/);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects missing, non-integer, negative, and inconsistent branded food counts', async (t) => {
+  const cases: {
+    name: string;
+    value: number | undefined;
+    expectedCategory: 'schema' | 'integrity';
+    expectedError: RegExp;
+  }[] = [
+    {
+      name: 'missing',
+      value: undefined,
+      expectedCategory: 'schema',
+      expectedError: /must be a non-negative integer/,
+    },
+    {
+      name: 'non-integer',
+      value: 1.5,
+      expectedCategory: 'schema',
+      expectedError: /must be a non-negative integer/,
+    },
+    {
+      name: 'negative',
+      value: -1,
+      expectedCategory: 'schema',
+      expectedError: /must be a non-negative integer/,
+    },
+    {
+      name: 'inconsistent',
+      value: 2,
+      expectedCategory: 'integrity',
+      expectedError: /branded count 1 does not match manifest 2/,
+    },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const dir = await createArtifacts();
+      try {
+        const manifestPath = path.join(dir, 'foods.manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+          totals: { brandedSeedCount?: number };
+        };
+        if (testCase.value === undefined) {
+          delete manifest.totals.brandedSeedCount;
+        } else {
+          manifest.totals.brandedSeedCount = testCase.value;
+        }
+        await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+        const report = await validateFoodSeedArtifacts(dir);
+        const manifestCheck = report.checks.find(
+          (item) =>
+            item.asset.includes('foods.manifest.json') &&
+            item.category === testCase.expectedCategory
+        );
+
+        assert.equal(report.status, 'fail');
+        assert.ok(manifestCheck?.errors.some((error) => testCase.expectedError.test(error)));
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
   }
 });
 
