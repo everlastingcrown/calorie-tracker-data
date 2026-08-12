@@ -121,6 +121,26 @@ function mergeErrors(target: ValidationErrors, source: ValidationErrors): void {
   }
 }
 
+function validateManifestBrandedSeedCount(manifest: SeedManifest): ValidationErrors {
+  const errors = validationErrors();
+  const brandedSeedCount: unknown = (
+    manifest as { totals?: { brandedSeedCount?: unknown } }
+  ).totals?.brandedSeedCount;
+
+  if (
+    typeof brandedSeedCount !== 'number' ||
+    !Number.isInteger(brandedSeedCount) ||
+    brandedSeedCount < 0
+  ) {
+    pushError(
+      errors,
+      'totals.brandedSeedCount: must be a non-negative integer'
+    );
+  }
+
+  return errors;
+}
+
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === 'string';
 }
@@ -459,28 +479,46 @@ export async function validateFoodSeedArtifacts(outputDir: string): Promise<Food
     checks.push(check(file, 'content', contentErrors, `${records} records pass content checks`));
   }
 
+  const manifestSchemaErrors = validateManifestBrandedSeedCount(manifest);
+  checks.push(
+    check(
+      'foods.manifest.json',
+      'schema',
+      manifestSchemaErrors,
+      'totals.brandedSeedCount is a non-negative integer'
+    )
+  );
+
   const reconciliationErrors = validationErrors();
   const genericRecords = assets.find((asset) => asset.kind === 'generic')?.records ?? 0;
   const brandedRecords = assets
     .filter((asset) => asset.kind === 'branded')
     .reduce((sum, asset) => sum + asset.records, 0);
   if (files.length === 0) pushError(reconciliationErrors, 'no seed assets found');
-  if (genericRecords !== manifest.totals.genericSeedCount) {
+  const manifestTotals = (
+    manifest as Partial<SeedManifest> & {
+      totals?: Partial<SeedManifest['totals']>;
+    }
+  ).totals;
+  if (genericRecords !== manifestTotals?.genericSeedCount) {
     pushError(
       reconciliationErrors,
-      `generic count ${genericRecords} does not match manifest ${manifest.totals.genericSeedCount}`
+      `generic count ${genericRecords} does not match manifest ${manifestTotals?.genericSeedCount}`
     );
   }
-  if (brandedRecords !== manifest.totals.brandedSeedCount) {
+  if (
+    manifestSchemaErrors.total === 0 &&
+    brandedRecords !== manifestTotals?.brandedSeedCount
+  ) {
     pushError(
       reconciliationErrors,
-      `branded count ${brandedRecords} does not match manifest ${manifest.totals.brandedSeedCount}`
+      `branded count ${brandedRecords} does not match manifest ${manifestTotals?.brandedSeedCount}`
     );
   }
-  if (genericRecords + brandedRecords !== manifest.totals.seedCount) {
+  if (genericRecords + brandedRecords !== manifestTotals?.seedCount) {
     pushError(
       reconciliationErrors,
-      `total count ${genericRecords + brandedRecords} does not match manifest ${manifest.totals.seedCount}`
+      `total count ${genericRecords + brandedRecords} does not match manifest ${manifestTotals?.seedCount}`
     );
   }
   if (qa.counts.genericFoods !== genericRecords || qa.counts.brandedFoods !== brandedRecords) {

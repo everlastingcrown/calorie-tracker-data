@@ -1417,6 +1417,29 @@ test('addDedupeRecord indexes growing duplicate groups without rebuilding record
   assert.equal(duplicateGroups[0].droppedIds.length, recordCount - 1);
 });
 
+test('build manifest records empty and large branded counts from existing pipeline totals', async () => {
+  const empty = await testExports.buildManifest(
+    [],
+    { generic: 0, branded: 0 },
+    [],
+    testRelease.runAt,
+    testRelease
+  );
+  const representativeLargeCount = 1_000_000;
+  const large = await testExports.buildManifest(
+    [],
+    { generic: 0, branded: representativeLargeCount },
+    [],
+    testRelease.runAt,
+    testRelease
+  );
+
+  assert.equal(empty.totals.brandedSeedCount, 0);
+  assert.equal(empty.totals.seedCount, 0);
+  assert.equal(large.totals.brandedSeedCount, representativeLargeCount);
+  assert.equal(large.totals.seedCount, representativeLargeCount);
+});
+
 test('buildFoodSeedArtifacts splits generic and branded outputs by country', async () => {
   const rootDir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-build-'));
   const usdaDir = path.join(rootDir, 'usda');
