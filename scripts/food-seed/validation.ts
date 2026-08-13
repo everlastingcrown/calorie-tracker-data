@@ -121,11 +121,14 @@ function mergeErrors(target: ValidationErrors, source: ValidationErrors): void {
   }
 }
 
-function validateManifestBrandedSeedCount(manifest: SeedManifest): ValidationErrors {
+function validateManifestBrandedSeedCounts(manifest: SeedManifest): ValidationErrors {
   const errors = validationErrors();
-  const brandedSeedCount: unknown = (
-    manifest as { totals?: { brandedSeedCount?: unknown } }
-  ).totals?.brandedSeedCount;
+  const totals = (
+    manifest as {
+      totals?: { brandedSeedCount?: unknown; brandedSeedCountsByCountry?: unknown };
+    }
+  ).totals;
+  const brandedSeedCount = totals?.brandedSeedCount;
 
   if (
     typeof brandedSeedCount !== 'number' ||
@@ -136,6 +139,30 @@ function validateManifestBrandedSeedCount(manifest: SeedManifest): ValidationErr
       errors,
       'totals.brandedSeedCount: must be a non-negative integer'
     );
+  }
+
+  const counts = totals?.brandedSeedCountsByCountry;
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)) {
+    pushError(
+      errors,
+      'totals.brandedSeedCountsByCountry: must be an object keyed by country code'
+    );
+    return errors;
+  }
+
+  for (const [countryCode, count] of Object.entries(counts)) {
+    if (!/^[a-z0-9-]+$/.test(countryCode)) {
+      pushError(
+        errors,
+        `totals.brandedSeedCountsByCountry.${countryCode}: invalid country code`
+      );
+    }
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+      pushError(
+        errors,
+        `totals.brandedSeedCountsByCountry.${countryCode}: must be a non-negative integer`
+      );
+    }
   }
 
   return errors;
@@ -479,13 +506,13 @@ export async function validateFoodSeedArtifacts(outputDir: string): Promise<Food
     checks.push(check(file, 'content', contentErrors, `${records} records pass content checks`));
   }
 
-  const manifestSchemaErrors = validateManifestBrandedSeedCount(manifest);
+  const manifestSchemaErrors = validateManifestBrandedSeedCounts(manifest);
   checks.push(
     check(
       'foods.manifest.json',
       'schema',
       manifestSchemaErrors,
-      'totals.brandedSeedCount is a non-negative integer'
+      'global and per-country branded seed counts are valid'
     )
   );
 
@@ -514,6 +541,46 @@ export async function validateFoodSeedArtifacts(outputDir: string): Promise<Food
       reconciliationErrors,
       `branded count ${brandedRecords} does not match manifest ${manifestTotals?.brandedSeedCount}`
     );
+  }
+  if (manifestSchemaErrors.total === 0) {
+    const countsByCountry = manifestTotals?.brandedSeedCountsByCountry ?? {};
+    const brandedAssetsByCountry = new Map(
+      assets
+        .filter((asset) => asset.kind === 'branded')
+        .map((asset) => [
+          asset.file.match(/^foods-([a-z0-9-]+)\.branded\.json$/)?.[1] ?? '',
+          asset,
+        ])
+    );
+    for (const [countryCode, count] of Object.entries(countsByCountry)) {
+      const asset = brandedAssetsByCountry.get(countryCode);
+      if (!asset) {
+        pushError(
+          reconciliationErrors,
+          `country ${countryCode} count ${count} has no published branded asset`
+        );
+      } else if (asset.records !== count) {
+        pushError(
+          reconciliationErrors,
+          `country ${countryCode} count ${asset.records} does not match manifest ${count}`
+        );
+      }
+    }
+    for (const countryCode of brandedAssetsByCountry.keys()) {
+      if (!Object.hasOwn(countsByCountry, countryCode)) {
+        pushError(reconciliationErrors, `country ${countryCode} branded count is missing`);
+      }
+    }
+    const perCountryTotal = Object.values(countsByCountry).reduce(
+      (sum, count) => sum + count,
+      0
+    );
+    if (perCountryTotal !== manifestTotals?.brandedSeedCount) {
+      pushError(
+        reconciliationErrors,
+        `per-country branded count ${perCountryTotal} does not match global manifest ${manifestTotals?.brandedSeedCount}`
+      );
+    }
   }
   if (genericRecords + brandedRecords !== manifestTotals?.seedCount) {
     pushError(

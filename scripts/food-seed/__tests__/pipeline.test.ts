@@ -1421,6 +1421,7 @@ test('build manifest records empty and large branded counts from existing pipeli
   const empty = await testExports.buildManifest(
     [],
     { generic: 0, branded: 0 },
+    new Map(),
     [],
     testRelease.runAt,
     testRelease
@@ -1429,14 +1430,19 @@ test('build manifest records empty and large branded counts from existing pipeli
   const large = await testExports.buildManifest(
     [],
     { generic: 0, branded: representativeLargeCount },
+    new Map([['us', { length: representativeLargeCount }]]),
     [],
     testRelease.runAt,
     testRelease
   );
 
   assert.equal(empty.totals.brandedSeedCount, 0);
+  assert.deepEqual(empty.totals.brandedSeedCountsByCountry, {});
   assert.equal(empty.totals.seedCount, 0);
   assert.equal(large.totals.brandedSeedCount, representativeLargeCount);
+  assert.deepEqual(large.totals.brandedSeedCountsByCountry, {
+    us: representativeLargeCount,
+  });
   assert.equal(large.totals.seedCount, representativeLargeCount);
 });
 
@@ -1596,6 +1602,11 @@ test('buildFoodSeedArtifacts splits generic and branded outputs by country', asy
   assert.ok(compressedBranded.byteLength < Buffer.byteLength(JSON.stringify(brandedFoods)));
   assert.equal(manifest.totals.genericSeedCount, 1);
   assert.equal(manifest.totals.brandedSeedCount, 3);
+  assert.deepEqual(manifest.totals.brandedSeedCountsByCountry, {
+    kr: 1,
+    unknown: 1,
+    us: 1,
+  });
 
   const emittedFoods = [
     ...genericFoods,
