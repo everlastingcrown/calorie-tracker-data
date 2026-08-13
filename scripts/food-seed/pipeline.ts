@@ -54,6 +54,7 @@ export type { FoodSeedBuildArgs, SeedFood, SeedStagingRecord } from './types.ts'
 async function buildManifest(
   sources: ParsedSource[],
   seedCounts: { generic: number; branded: number },
+  brandedRecordsByCountry: ReadonlyMap<string, { readonly length: number }>,
   duplicateGroups: QADuplicateGroup[],
   generatedAt: string,
   release: SeedRelease
@@ -92,6 +93,9 @@ async function buildManifest(
       seedCount: seedCounts.generic + seedCounts.branded,
       genericSeedCount: seedCounts.generic,
       brandedSeedCount: seedCounts.branded,
+      brandedSeedCountsByCountry: Object.fromEntries(
+        [...brandedRecordsByCountry].map(([countryCode, records]) => [countryCode, records.length])
+      ),
       rejectedRowCount,
       duplicateGroupCount: duplicateGroups.length,
     },
@@ -249,6 +253,7 @@ export async function buildFoodSeedArtifacts(args: FoodSeedBuildArgs): Promise<B
   const manifest = await buildManifest(
     sources,
     { generic: genericSeedFoods.length, branded: dedupedBrandedRecords.length },
+    brandedRecordsByCountry,
     duplicateGroups,
     generatedAt,
     args.release

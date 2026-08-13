@@ -161,6 +161,7 @@ export interface SeedManifest {
     seedCount: number;
     genericSeedCount: number;
     brandedSeedCount: number;
+    brandedSeedCountsByCountry: Record<string, number>;
     rejectedRowCount: number;
     duplicateGroupCount: number;
   };

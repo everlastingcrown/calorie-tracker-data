@@ -86,6 +86,7 @@ async function createArtifacts(): Promise<string> {
       seedCount: 2,
       genericSeedCount: 1,
       brandedSeedCount: 1,
+      brandedSeedCountsByCountry: { au: 1 },
       rejectedRowCount: 0,
       duplicateGroupCount: 0,
     },
@@ -224,6 +225,156 @@ test('rejects missing, non-integer, negative, and inconsistent branded food coun
         } else {
           manifest.totals.brandedSeedCount = testCase.value;
         }
+        await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+        const report = await validateFoodSeedArtifacts(dir);
+        const manifestCheck = report.checks.find(
+          (item) =>
+            item.asset.includes('foods.manifest.json') &&
+            item.category === testCase.expectedCategory
+        );
+
+        assert.equal(report.status, 'fail');
+        assert.ok(manifestCheck?.errors.some((error) => testCase.expectedError.test(error)));
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test('validates different per-country counts and an empty published shard', async () => {
+  const dir = await createArtifacts();
+  try {
+    const usFoods = [
+      food({
+        id: 'food-us-1',
+        brandName: 'US Foods',
+        countryCode: 'us',
+        source: 'openfoodfacts',
+      }),
+      food({
+        id: 'food-us-2',
+        brandName: 'US Foods',
+        countryCode: 'us',
+        source: 'openfoodfacts',
+      }),
+    ];
+    await Promise.all([
+      writeSeedAsset(dir, 'foods-us.branded.json', usFoods),
+      writeSeedAsset(dir, 'foods-ca.branded.json', []),
+    ]);
+
+    const manifestPath = path.join(dir, 'foods.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as SeedManifest;
+    manifest.totals.seedCount = 4;
+    manifest.totals.brandedSeedCount = 3;
+    manifest.totals.brandedSeedCountsByCountry = { au: 1, ca: 0, us: 2 };
+    const qaPath = path.join(dir, 'foods.qa.json');
+    const qa = JSON.parse(await readFile(qaPath, 'utf8')) as SeedQAReport;
+    qa.counts.emittedFoods = 4;
+    qa.counts.brandedFoods = 3;
+    await Promise.all([
+      writeFile(manifestPath, `${JSON.stringify(manifest)}\n`),
+      writeFile(qaPath, `${JSON.stringify(qa)}\n`),
+    ]);
+
+    const report = await validateFoodSeedArtifacts(dir);
+
+    assert.equal(report.status, 'pass');
+    assert.deepEqual(
+      report.assets
+        .filter((asset) => asset.kind === 'branded')
+        .map(({ file, records }) => ({ file, records })),
+      [
+        { file: 'foods-au.branded.json', records: 1 },
+        { file: 'foods-ca.branded.json', records: 0 },
+        { file: 'foods-us.branded.json', records: 2 },
+      ]
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('rejects malformed and artifact-inconsistent per-country branded counts', async (t) => {
+  const cases: {
+    name: string;
+    update: (totals: Record<string, unknown>) => void;
+    expectedCategory: 'schema' | 'integrity';
+    expectedError: RegExp;
+  }[] = [
+    {
+      name: 'missing map',
+      update: (totals) => delete totals.brandedSeedCountsByCountry,
+      expectedCategory: 'schema',
+      expectedError: /must be an object keyed by country code/,
+    },
+    {
+      name: 'non-object map',
+      update: (totals) => {
+        totals.brandedSeedCountsByCountry = [];
+      },
+      expectedCategory: 'schema',
+      expectedError: /must be an object keyed by country code/,
+    },
+    {
+      name: 'fractional count',
+      update: (totals) => {
+        totals.brandedSeedCountsByCountry = { au: 1.5 };
+      },
+      expectedCategory: 'schema',
+      expectedError: /brandedSeedCountsByCountry\.au: must be a non-negative integer/,
+    },
+    {
+      name: 'negative count',
+      update: (totals) => {
+        totals.brandedSeedCountsByCountry = { au: -1 };
+      },
+      expectedCategory: 'schema',
+      expectedError: /brandedSeedCountsByCountry\.au: must be a non-negative integer/,
+    },
+    {
+      name: 'count mismatch',
+      update: (totals) => {
+        totals.brandedSeedCount = 2;
+        totals.seedCount = 3;
+        totals.brandedSeedCountsByCountry = { au: 2 };
+      },
+      expectedCategory: 'integrity',
+      expectedError: /country au count 1 does not match manifest 2/,
+    },
+    {
+      name: 'missing country key',
+      update: (totals) => {
+        totals.brandedSeedCount = 0;
+        totals.seedCount = 1;
+        totals.brandedSeedCountsByCountry = {};
+      },
+      expectedCategory: 'integrity',
+      expectedError: /country au branded count is missing/,
+    },
+    {
+      name: 'country key without an artifact',
+      update: (totals) => {
+        totals.brandedSeedCount = 2;
+        totals.seedCount = 3;
+        totals.brandedSeedCountsByCountry = { au: 1, us: 1 };
+      },
+      expectedCategory: 'integrity',
+      expectedError: /country us count 1 has no published branded asset/,
+    },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const dir = await createArtifacts();
+      try {
+        const manifestPath = path.join(dir, 'foods.manifest.json');
+        const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
+          totals: Record<string, unknown>;
+        };
+        testCase.update(manifest.totals);
         await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
 
         const report = await validateFoodSeedArtifacts(dir);
