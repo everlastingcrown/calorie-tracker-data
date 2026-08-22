@@ -412,6 +412,36 @@ test('rejects a non-null sourceUpdatedAt that is not a valid ISO date', async ()
   }
 });
 
+test('rejects a non-null barcode that does not match barcodes[0]', async (t) => {
+  const cases = [
+    { name: 'different first barcode', barcodes: ['9300000000002'] },
+    { name: 'empty barcode list', barcodes: [] },
+  ];
+
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const dir = await createArtifacts();
+      try {
+        await writeSeedAsset(dir, 'foods.seed.json', [
+          food({ barcode: '9300000000001', barcodes: testCase.barcodes }),
+        ]);
+
+        const report = await validateFoodSeedArtifacts(dir);
+        const contentCheck = report.checks.find(
+          (item) => item.asset === 'foods.seed.json' && item.category === 'content'
+        );
+
+        assert.equal(contentCheck?.status, 'fail');
+        assert.deepEqual(contentCheck?.errors, [
+          'record 1.barcode: must match barcodes[0]',
+        ]);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 test('counts all asset errors while keeping the reported error arrays capped', async () => {
   const dir = await createArtifacts();
   try {

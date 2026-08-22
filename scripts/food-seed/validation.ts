@@ -286,6 +286,9 @@ function validateFoodContent(
   if (!['high', 'medium', 'low'].includes(food.quality)) {
     pushError(errors, `${recordLabel}.quality: unsupported value ${food.quality}`);
   }
+  if (food.barcode !== null && food.barcode !== food.barcodes[0]) {
+    pushError(errors, `${recordLabel}.barcode: must match barcodes[0]`);
+  }
 
   const nutrients = [
     ['caloriesPer100g', food.caloriesPer100g, 9_000],
