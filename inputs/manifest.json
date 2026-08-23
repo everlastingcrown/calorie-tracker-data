@@ -22,7 +22,7 @@
         {
           "id": "foundation-csv-zip",
           "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_csv_2026-04-30.zip",
-          "sha256": "d6d4f41dcd19a46abcdd67775379cb6f0292ff08daa7e0680fdd0982830bf57b",
+          "sha256": "70457ee9d9342f43bda2010318c85f04210c689fdeb9cd2da4c513b0e8dbc655",
           "fileName": "FoodData_Central_foundation_food_csv_2026-04-30.zip",
           "extract": "zip"
         }
