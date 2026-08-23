@@ -117,6 +117,80 @@ test('parseUsdaDirectory extracts household serving weights from portions', asyn
   await rm(dir, { recursive: true, force: true });
 });
 
+test('parseUsdaDirectory emits more than 100 foods with current Atwater energy nutrients', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-usda-'));
+  const foodCount = 150;
+  const foods = ['fdc_id,data_type,description,publication_date'];
+  const nutrients = ['fdc_id,nutrient_id,amount'];
+
+  for (let index = 1; index <= foodCount; index += 1) {
+    foods.push(`${index},foundation_food,Foundation food ${index},2026-04-30`);
+    nutrients.push(
+      `${index},2047,100`,
+      `${index},1003,5`,
+      `${index},1005,10`,
+      `${index},1004,4`
+    );
+  }
+
+  await writeFile(path.join(dir, 'food.csv'), foods.join('\n'));
+  await writeFile(path.join(dir, 'food_nutrient.csv'), nutrients.join('\n'));
+  await writeFile(
+    path.join(dir, 'food_portion.csv'),
+    'fdc_id,amount,measure_unit_id,portion_description,modifier,gram_weight\n'
+  );
+
+  const [foundation] = await testExports.parseUsdaDirectory(dir);
+
+  assert.equal(foundation.stagingRecords.length, foodCount);
+  assert.ok(foundation.stagingRecords.length > 100);
+  assert.equal(foundation.rejectedRows.length, 0);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('parseUsdaDirectory prefers specific then general then legacy USDA energy', async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-usda-'));
+
+  await writeFile(
+    path.join(dir, 'food.csv'),
+    [
+      'fdc_id,data_type,description,publication_date',
+      '1,foundation_food,Specific energy,2026-04-30',
+      '2,foundation_food,General energy,2026-04-30',
+      '3,foundation_food,Legacy energy,2026-04-30',
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(dir, 'food_nutrient.csv'),
+    [
+      'fdc_id,nutrient_id,amount',
+      '1,1008,110',
+      '1,2047,120',
+      '1,2048,130',
+      '2,1008,210',
+      '2,2047,220',
+      '3,1008,310',
+      ...[1, 2, 3].flatMap((id) => [
+        `${id},1003,5`,
+        `${id},1005,10`,
+        `${id},1004,4`,
+      ]),
+    ].join('\n')
+  );
+  await writeFile(
+    path.join(dir, 'food_portion.csv'),
+    'fdc_id,amount,measure_unit_id,portion_description,modifier,gram_weight\n'
+  );
+
+  const [foundation] = await testExports.parseUsdaDirectory(dir);
+
+  assert.deepEqual(
+    foundation.stagingRecords.map((record) => record.caloriesPer100g),
+    [130, 220, 310]
+  );
+  await rm(dir, { recursive: true, force: true });
+});
+
 test('parseOpenFoodFactsDirectory extracts serving weight from serving text', async () => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'food-seed-off-'));
   await mkdir(dir, { recursive: true });

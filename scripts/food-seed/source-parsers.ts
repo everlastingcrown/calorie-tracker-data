@@ -29,7 +29,9 @@ import {
 import { validateEnergyPair } from './energy-validation.ts';
 
 const USDA_NUTRIENTS = {
-  calories: 1008,
+  legacyCalories: 1008,
+  atwaterGeneralCalories: 2047,
+  atwaterSpecificCalories: 2048,
   protein: 1003,
   carbs: 1005,
   fat: 1004,
@@ -136,7 +138,9 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
   const nutrientsByFood = new Map<
     string,
     {
-      calories: number | null;
+      legacyCalories: number | null;
+      atwaterGeneralCalories: number | null;
+      atwaterSpecificCalories: number | null;
       protein: number | null;
       carbs: number | null;
       fat: number | null;
@@ -150,12 +154,20 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
     if (!fdcId || nutrientId == null || amount == null) continue;
 
     const existing = nutrientsByFood.get(fdcId) ?? {
-      calories: null,
+      legacyCalories: null,
+      atwaterGeneralCalories: null,
+      atwaterSpecificCalories: null,
       protein: null,
       carbs: null,
       fat: null,
     };
-    if (nutrientId === USDA_NUTRIENTS.calories) existing.calories = amount;
+    if (nutrientId === USDA_NUTRIENTS.legacyCalories) existing.legacyCalories = amount;
+    if (nutrientId === USDA_NUTRIENTS.atwaterGeneralCalories) {
+      existing.atwaterGeneralCalories = amount;
+    }
+    if (nutrientId === USDA_NUTRIENTS.atwaterSpecificCalories) {
+      existing.atwaterSpecificCalories = amount;
+    }
     if (nutrientId === USDA_NUTRIENTS.protein) existing.protein = amount;
     if (nutrientId === USDA_NUTRIENTS.carbs) existing.carbs = amount;
     if (nutrientId === USDA_NUTRIENTS.fat) existing.fat = amount;
@@ -238,11 +250,17 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
     if (!providerId) continue;
 
     const nutrients = nutrientsByFood.get(providerId) ?? {
-      calories: null,
+      legacyCalories: null,
+      atwaterGeneralCalories: null,
+      atwaterSpecificCalories: null,
       protein: null,
       carbs: null,
       fat: null,
     };
+    const calories =
+      nutrients.atwaterSpecificCalories ??
+      nutrients.atwaterGeneralCalories ??
+      nutrients.legacyCalories;
     const servingMeasures = servingsByFood.get(providerId) ?? [];
     const serving = chooseBestServing(servingMeasures);
     const servingSizes = buildServingSizes(servingMeasures, 'usda_portion');
@@ -254,7 +272,7 @@ export async function parseUsdaDirectory(usdaDir: string): Promise<ParsedSource[
       brandName: null,
       countryCode: null,
       region: 'us',
-      caloriesPer100g: nutrients.calories != null ? roundNumber(nutrients.calories) : null,
+      caloriesPer100g: calories != null ? roundNumber(calories) : null,
       proteinPer100g: nutrients.protein != null ? roundNumber(nutrients.protein) : null,
       carbsPer100g: nutrients.carbs != null ? roundNumber(nutrients.carbs) : null,
       fatPer100g: nutrients.fat != null ? roundNumber(nutrients.fat) : null,
